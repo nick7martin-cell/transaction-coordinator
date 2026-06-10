@@ -1,0 +1,141 @@
+import { supabase } from "@/lib/supabase";
+import { buildTransactionUpdate } from "@/lib/transaction-db";
+import {
+  applyAutoCloseForId,
+  isPersistedStatus,
+} from "@/lib/transaction-lifecycle";
+import type { Transaction } from "@/lib/types";
+import { coerceExtractedData } from "@/lib/types";
+
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  const { data, error } = await supabase
+    .from("extractions")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    return Response.json(
+      { error: error.message },
+      { status: error.code === "PGRST116" ? 404 : 500 }
+    );
+  }
+
+  const transaction = await applyAutoCloseForId(data as Transaction);
+
+  return Response.json({ transaction });
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const body = await req.json();
+
+  const hasFlagged = "flagged_for_review" in body;
+  const hasAcceptance = "acceptanceDate" in body;
+  const hasStatus = "status" in body;
+
+  if (!hasFlagged && !hasAcceptance && !hasStatus) {
+    return Response.json({ error: "No valid fields to update" }, { status: 400 });
+  }
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("extractions")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (fetchError || !existing) {
+    return Response.json(
+      { error: fetchError?.message ?? "Transaction not found" },
+      { status: fetchError?.code === "PGRST116" ? 404 : 500 }
+    );
+  }
+
+  const updates: Record<string, unknown> = {};
+
+  if (hasFlagged) {
+    updates.flagged_for_review = Boolean(body.flagged_for_review);
+  }
+
+  if (hasAcceptance) {
+    const raw = body.acceptanceDate;
+    const acceptanceDate =
+      typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+    const extracted = (existing.extracted_data ?? {}) as Record<string, unknown>;
+    updates.extracted_data = { ...extracted, acceptanceDate };
+  }
+
+  if (hasStatus) {
+    if (!isPersistedStatus(body.status)) {
+      return Response.json({ error: "Invalid status" }, { status: 400 });
+    }
+    updates.status = body.status;
+    updates.status_manual = true;
+  }
+
+  const { data, error } = await supabase
+    .from("extractions")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    return Response.json(
+      { error: error.message },
+      { status: error.code === "PGRST116" ? 404 : 500 }
+    );
+  }
+
+  const extracted = coerceExtractedData(data.extracted_data);
+  await supabase
+    .from("transactions")
+    .update(buildTransactionUpdate({ extracted }))
+    .eq("id", id);
+
+  return Response.json({ transaction: data as Transaction });
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  const { error: metaError } = await supabase
+    .from("transaction_meta")
+    .delete()
+    .eq("transaction_id", id);
+
+  if (metaError) {
+    return Response.json({ error: metaError.message }, { status: 500 });
+  }
+
+  const { error: transactionError } = await supabase
+    .from("transactions")
+    .delete()
+    .eq("id", id);
+
+  if (transactionError) {
+    return Response.json({ error: transactionError.message }, { status: 500 });
+  }
+
+  const { error: extractionError } = await supabase
+    .from("extractions")
+    .delete()
+    .eq("id", id);
+
+  if (extractionError) {
+    return Response.json({ error: extractionError.message }, { status: 500 });
+  }
+
+  return Response.json({ success: true });
+}
