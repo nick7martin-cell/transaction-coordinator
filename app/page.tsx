@@ -41,7 +41,6 @@ export default function Home() {
   const activeTransactions = transactions.filter(isActiveTransaction);
 
   const recent = activeTransactions.slice(0, 8);
-  const demoId = activeTransactions[0]?.id ?? null;
 
   return (
     <AppShell>
@@ -58,7 +57,6 @@ export default function Home() {
         <UploadZone
           variant="dashboard"
           onSuccess={loadTransactions}
-          demoTransactionId={demoId}
         />
 
         <section className="mt-10">

@@ -189,7 +189,6 @@ export default function TransactionsPage() {
                 loadTransactions();
                 setShowUpload(false);
               }}
-              demoTransactionId={transactions[0]?.id ?? null}
             />
           </div>
         )}

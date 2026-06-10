@@ -69,12 +69,85 @@ export function normalizeExtraction(raw: Record<string, unknown>): ExtractedData
   return result;
 }
 
-/** Run Claude extraction on a PDF buffer. */
-export async function extractPdf(
-  pdfBuffer: ArrayBuffer,
-  documentType = "purchase_agreement"
+export type ExtractionDocument =
+  | {
+      kind: "pdf";
+      buffer: ArrayBuffer;
+      mediaType: "application/pdf";
+    }
+  | {
+      kind: "image";
+      buffer: ArrayBuffer;
+      mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+    };
+
+type MessageContent = Anthropic.Messages.MessageCreateParams["messages"][number]["content"];
+
+function buildMessageContent(
+  documents: ExtractionDocument[],
+  documentType: string,
+  notes?: string | null
+): MessageContent {
+  const blocks: Extract<MessageContent, Array<unknown>> = [];
+
+  for (const doc of documents) {
+    const base64 = Buffer.from(doc.buffer).toString("base64");
+    if (doc.kind === "pdf") {
+      blocks.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: base64,
+        },
+      });
+    } else {
+      blocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: doc.mediaType,
+          data: base64,
+        },
+      });
+    }
+  }
+
+  const trimmedNotes = notes?.trim() ?? "";
+  const hasSupplementalImages = documents.some((d) => d.kind === "image");
+
+  if (trimmedNotes) {
+    blocks.push({
+      type: "text",
+      text: `Additional context from the coordinator:\n${trimmedNotes}`,
+    });
+  }
+
+  if (hasSupplementalImages) {
+    blocks.push({
+      type: "text",
+      text:
+        "Supplemental screenshot images are included above. Use them together with the purchase agreement when extracting contact details and transaction information.",
+    });
+  }
+
+  blocks.push({
+    type: "text",
+    text: buildExtractionPrompt(documentType),
+  });
+
+  return blocks;
+}
+
+/** Run Claude extraction on one or more documents plus optional coordinator notes. */
+export async function extractFromDocuments(
+  documents: ExtractionDocument[],
+  documentType = "purchase_agreement",
+  notes?: string | null
 ): Promise<ExtractedData> {
-  const base64Pdf = Buffer.from(pdfBuffer).toString("base64");
+  if (documents.length === 0) {
+    throw new Error("At least one document is required");
+  }
 
   const extraction = await client.messages.create({
     model: "claude-opus-4-6",
@@ -82,20 +155,7 @@ export async function extractPdf(
     messages: [
       {
         role: "user",
-        content: [
-          {
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: "application/pdf",
-              data: base64Pdf,
-            },
-          },
-          {
-            type: "text",
-            text: buildExtractionPrompt(documentType),
-          },
-        ],
+        content: buildMessageContent(documents, documentType, notes),
       },
     ],
   });
@@ -106,4 +166,15 @@ export async function extractPdf(
   const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
   const parsed = JSON.parse(cleaned) as Record<string, unknown>;
   return normalizeExtraction(parsed);
+}
+
+/** Run Claude extraction on a PDF buffer. */
+export async function extractPdf(
+  pdfBuffer: ArrayBuffer,
+  documentType = "purchase_agreement"
+): Promise<ExtractedData> {
+  return extractFromDocuments(
+    [{ kind: "pdf", buffer: pdfBuffer, mediaType: "application/pdf" }],
+    documentType
+  );
 }

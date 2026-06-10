@@ -2,73 +2,128 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CloudUpload, FileText, Loader2, Sparkles } from "lucide-react";
+import {
+  CloudUpload,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  Sparkles,
+  X,
+} from "lucide-react";
+import {
+  countPdfFiles,
+  isAllowedUploadFile,
+  isImageFile,
+  isPdfFile,
+} from "@/lib/upload-files";
 import { cn } from "@/lib/utils";
 
 type UploadZoneProps = {
   onSuccess?: () => void;
-  demoTransactionId?: string | null;
   /** Dashboard layout: no badge, centered intro text and action buttons. */
   variant?: "default" | "dashboard";
 };
 
+function fileKey(file: File): string {
+  return `${file.name}-${file.size}-${file.lastModified}`;
+}
+
+function mergeFiles(existing: File[], incoming: File[]): File[] {
+  const seen = new Set(existing.map(fileKey));
+  const merged = [...existing];
+  for (const file of incoming) {
+    const key = fileKey(file);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(file);
+  }
+  return merged;
+}
+
 export function UploadZone({
   onSuccess,
-  demoTransactionId,
   variant = "default",
 }: UploadZoneProps) {
   const isDashboard = variant === "dashboard";
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [notes, setNotes] = useState("");
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const uploadFile = useCallback(
-    async (file: File) => {
-      if (!file.name.toLowerCase().endsWith(".pdf")) {
-        setError("Please upload a PDF file.");
+  const addFiles = useCallback((incoming: FileList | File[] | null) => {
+    if (!incoming || incoming.length === 0) return;
+
+    const files = Array.from(incoming);
+    const invalid = files.filter((f) => !isAllowedUploadFile(f));
+    if (invalid.length > 0) {
+      setError(
+        "Unsupported file type. Use a PDF purchase agreement and optional JPEG, PNG, GIF, or WebP images."
+      );
+      return;
+    }
+
+    setSelectedFiles((prev) => {
+      const merged = mergeFiles(prev, files);
+      if (countPdfFiles(merged) > 1) {
+        setError("Only one PDF purchase agreement can be included.");
+        return prev;
+      }
+      setError(null);
+      return merged;
+    });
+  }, []);
+
+  const removeFile = useCallback((index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setError(null);
+  }, []);
+
+  const runExtraction = useCallback(async () => {
+    if (selectedFiles.length === 0) return;
+
+    if (countPdfFiles(selectedFiles) === 0) {
+      setError("Please include the purchase agreement PDF.");
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append("type", "purchase_agreement");
+    for (const file of selectedFiles) {
+      formData.append("files", file);
+    }
+    if (notes.trim()) {
+      formData.append("notes", notes.trim());
+    }
+
+    try {
+      const res = await fetch("/api/extract", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Upload failed");
         return;
       }
 
-      setUploading(true);
-      setError(null);
+      onSuccess?.();
+      router.push(`/transactions/${data.id}`);
+      router.refresh();
+    } catch (err) {
+      setError("Something went wrong: " + String(err));
+    } finally {
+      setUploading(false);
+    }
+  }, [notes, onSuccess, router, selectedFiles]);
 
-      const formData = new FormData();
-      formData.append("pdf", file);
-      formData.append("type", "purchase_agreement");
-
-      try {
-        const res = await fetch("/api/extract", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          setError(data.error || "Upload failed");
-          return;
-        }
-
-        onSuccess?.();
-        router.push(`/transactions/${data.id}`);
-        router.refresh();
-      } catch (err) {
-        setError("Something went wrong: " + String(err));
-      } finally {
-        setUploading(false);
-      }
-    },
-    [onSuccess, router]
-  );
-
-  const handleFiles = useCallback(
-    (files: FileList | null) => {
-      const file = files?.[0];
-      if (file) uploadFile(file);
-    },
-    [uploadFile]
-  );
+  const hasFiles = selectedFiles.length > 0;
 
   return (
     <div
@@ -96,8 +151,8 @@ export function UploadZone({
             isDashboard && "mx-auto"
           )}
         >
-          Drop in a purchase agreement and Handled extracts the parties, dates,
-          and financials automatically — no manual data entry.
+          Add the purchase agreement PDF plus any supporting screenshots, then
+          extract parties, dates, and financials automatically.
         </p>
       </div>
 
@@ -110,7 +165,7 @@ export function UploadZone({
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          handleFiles(e.dataTransfer.files);
+          addFiles(e.dataTransfer.files);
         }}
         className={cn(
           "mt-6 flex flex-col items-center justify-center w-full h-52 rounded-[16px] cursor-pointer transition-colors",
@@ -140,10 +195,11 @@ export function UploadZone({
                 <CloudUpload className="h-6 w-6 text-brand" />
               </div>
               <p className="text-sm font-semibold text-ink">
-                Drag &amp; drop your document here
+                Drag &amp; drop files here
               </p>
               <p className="text-[13px] text-ink-mute mt-1 max-w-xs">
-                PDF purchase agreements, addendums, or disclosures
+                PDF purchase agreement plus optional screenshots (emails,
+                Transaction Desk, etc.)
               </p>
             </>
           )}
@@ -152,11 +208,65 @@ export function UploadZone({
           ref={inputRef}
           type="file"
           className="hidden"
-          accept=".pdf,application/pdf"
-          onChange={(e) => handleFiles(e.target.files)}
+          accept=".pdf,application/pdf,image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
+          multiple
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = "";
+          }}
           disabled={uploading}
         />
       </label>
+
+      {hasFiles && !uploading && (
+        <ul className="mt-4 space-y-2">
+          {selectedFiles.map((file, index) => (
+            <li
+              key={fileKey(file)}
+              className="flex items-center gap-3 rounded-xl border border-line bg-canvas px-3 py-2"
+            >
+              {isPdfFile(file) ? (
+                <FileText className="h-4 w-4 shrink-0 text-brand" />
+              ) : (
+                <ImageIcon className="h-4 w-4 shrink-0 text-brand" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                {file.name}
+              </span>
+              <span className="text-xs text-ink-mute shrink-0">
+                {isPdfFile(file) ? "PDF" : isImageFile(file) ? "Image" : "File"}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeFile(index)}
+                className="rounded-lg p-1 text-ink-mute hover:text-ink hover:bg-surface transition-colors"
+                aria-label={`Remove ${file.name}`}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-4">
+        <label
+          htmlFor="upload-notes"
+          className="block text-sm font-medium text-ink-soft mb-1.5"
+        >
+          Additional notes{" "}
+          <span className="font-normal text-ink-mute">(optional)</span>
+        </label>
+        <textarea
+          id="upload-notes"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          disabled={uploading}
+          rows={3}
+          placeholder="Agent emails, Transaction Desk details, or anything else Claude should know before extracting…"
+          className="w-full rounded-xl border border-line bg-canvas px-3 py-2.5 text-sm text-ink placeholder:text-ink-mute focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/40 disabled:opacity-60 resize-y min-h-[72px]"
+        />
+      </div>
 
       <div
         className={cn(
@@ -168,22 +278,26 @@ export function UploadZone({
           type="button"
           disabled={uploading}
           onClick={() => inputRef.current?.click()}
-          className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 h-11 text-sm font-semibold text-white shadow-card transition-colors hover:bg-brand-hover disabled:opacity-50 disabled:pointer-events-none"
-        >
-          <CloudUpload className="h-4 w-4" />
-          Upload purchase agreement
-        </button>
-        <button
-          type="button"
-          disabled={!demoTransactionId}
-          onClick={() => {
-            if (demoTransactionId) router.push(`/transactions/${demoTransactionId}`);
-          }}
           className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-5 h-11 text-sm font-semibold text-ink-soft transition-colors hover:text-ink hover:border-ink-mute/40 disabled:opacity-50 disabled:pointer-events-none"
         >
-          <FileText className="h-4 w-4 text-ink-mute" />
-          View demo transaction
+          <CloudUpload className="h-4 w-4" />
+          Choose files
         </button>
+        {hasFiles && (
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => void runExtraction()}
+            className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 h-11 text-sm font-semibold text-white shadow-card transition-colors hover:bg-brand-hover disabled:opacity-50 disabled:pointer-events-none"
+          >
+            {uploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            Extract
+          </button>
+        )}
       </div>
 
       {error && (
