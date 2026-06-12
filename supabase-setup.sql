@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS extractions (
 ALTER TABLE extractions DISABLE ROW LEVEL SECURITY;
 
 -- Migration for existing databases (safe to re-run):
+-- IMPORTANT: Status actions (Mark as Cancelled / Closed) require these columns.
+-- Run this block if cancel/close buttons fail or status stays Active.
 ALTER TABLE extractions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
 ALTER TABLE extractions ADD COLUMN IF NOT EXISTS status_manual BOOLEAN DEFAULT false;
 UPDATE extractions SET status = 'active' WHERE status IS NULL;

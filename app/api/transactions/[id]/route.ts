@@ -2,7 +2,11 @@ import { supabase } from "@/lib/supabase";
 import { buildTransactionUpdate } from "@/lib/transaction-db";
 import {
   applyAutoCloseForId,
+  isMissingStatusColumnError,
   isPersistedStatus,
+  normalizeTransactionRow,
+  stripStatusColumnsFromUpdates,
+  withLifecycleInExtracted,
 } from "@/lib/transaction-lifecycle";
 import type { Transaction } from "@/lib/types";
 import { coerceExtractedData } from "@/lib/types";
@@ -26,7 +30,12 @@ export async function GET(
     );
   }
 
-  const transaction = await applyAutoCloseForId(data as Transaction);
+  const transaction = normalizeTransactionRow(
+    (await applyAutoCloseForId(data as Transaction)) as unknown as Record<
+      string,
+      unknown
+    >
+  );
 
   return Response.json({ transaction });
 }
@@ -60,6 +69,7 @@ export async function PATCH(
   }
 
   const updates: Record<string, unknown> = {};
+  let extractedBase = (existing.extracted_data ?? {}) as Record<string, unknown>;
 
   if (hasFlagged) {
     updates.flagged_for_review = Boolean(body.flagged_for_review);
@@ -69,8 +79,7 @@ export async function PATCH(
     const raw = body.acceptanceDate;
     const acceptanceDate =
       typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
-    const extracted = (existing.extracted_data ?? {}) as Record<string, unknown>;
-    updates.extracted_data = { ...extracted, acceptanceDate };
+    extractedBase = { ...extractedBase, acceptanceDate };
   }
 
   if (hasStatus) {
@@ -79,14 +88,32 @@ export async function PATCH(
     }
     updates.status = body.status;
     updates.status_manual = true;
+    extractedBase = withLifecycleInExtracted(
+      extractedBase,
+      body.status,
+      true
+    );
   }
 
-  const { data, error } = await supabase
+  if (hasAcceptance || hasStatus) {
+    updates.extracted_data = extractedBase;
+  }
+
+  let { data, error } = await supabase
     .from("extractions")
     .update(updates)
     .eq("id", id)
     .select()
     .single();
+
+  if (isMissingStatusColumnError(error) && hasStatus) {
+    ({ data, error } = await supabase
+      .from("extractions")
+      .update(stripStatusColumnsFromUpdates(updates))
+      .eq("id", id)
+      .select()
+      .single());
+  }
 
   if (error) {
     return Response.json(
@@ -101,7 +128,7 @@ export async function PATCH(
     .update(buildTransactionUpdate({ extracted }))
     .eq("id", id);
 
-  return Response.json({ transaction: data as Transaction });
+  return Response.json({ transaction: normalizeTransactionRow(data) });
 }
 
 export async function DELETE(

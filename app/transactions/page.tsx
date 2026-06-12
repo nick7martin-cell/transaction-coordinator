@@ -23,7 +23,6 @@ import { LayoutGrid, List, Loader2, Plus } from "lucide-react";
 const filters: { id: TransactionFilter; label: string }[] = [
   { id: "all", label: "All Active" },
   { id: "needs_review", label: "Needs Review" },
-  { id: "closing_soon", label: "Closing Soon" },
   { id: "closed", label: "Closed" },
   { id: "cancelled", label: "Cancelled" },
 ];
@@ -60,6 +59,7 @@ export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [showUpload, setShowUpload] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [agentFilter, setAgentFilter] = useState("");
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -89,8 +89,6 @@ export default function TransactionsPage() {
       all: transactions.filter((t) => matchesFilter(t, "all")).length,
       needs_review: transactions.filter((t) => matchesFilter(t, "needs_review"))
         .length,
-      closing_soon: transactions.filter((t) => matchesFilter(t, "closing_soon"))
-        .length,
       closed: transactions.filter((t) => matchesFilter(t, "closed")).length,
       cancelled: transactions.filter((t) => matchesFilter(t, "cancelled"))
         .length,
@@ -98,11 +96,47 @@ export default function TransactionsPage() {
     [transactions]
   );
 
+  const agentOptions = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    const names = new Set<string>();
+    for (const t of transactions) {
+      if (!matchesFilter(t, activeFilter)) continue;
+      if (q) {
+        const d = t.extracted_data;
+        const haystack = [
+          d.propertyAddress,
+          d.buyerAgentName,
+          d.listingAgentName,
+          t.teamSteadyAgentName,
+          ...d.buyerNames,
+          ...d.sellerNames,
+          t.file_name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) continue;
+      }
+      const name = t.teamSteadyAgentName?.trim();
+      if (name) names.add(name);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [transactions, activeFilter, search]);
+
+  useEffect(() => {
+    if (agentFilter && !agentOptions.includes(agentFilter)) {
+      setAgentFilter("");
+    }
+  }, [agentFilter, agentOptions]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return transactions
       .filter((t) => {
         if (!matchesFilter(t, activeFilter)) return false;
+        if (agentFilter && (t.teamSteadyAgentName?.trim() ?? "") !== agentFilter) {
+          return false;
+        }
         if (!q) return true;
         const d = t.extracted_data;
         const haystack = [
@@ -120,7 +154,7 @@ export default function TransactionsPage() {
         return haystack.includes(q);
       })
       .sort(sortByClosingDate);
-  }, [transactions, activeFilter, search]);
+  }, [transactions, activeFilter, search, agentFilter]);
 
   return (
     <AppShell
@@ -193,30 +227,50 @@ export default function TransactionsPage() {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2 mb-7">
-          {filters.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setActiveFilter(f.id)}
-              className={cn(
-                "rounded-full px-4 py-2 text-sm font-medium transition-colors border",
-                activeFilter === f.id
-                  ? "bg-brand text-white border-brand"
-                  : "bg-surface text-ink-soft border-line hover:border-ink-mute/40 hover:text-ink"
-              )}
-            >
-              {f.label}{" "}
-              <span
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-7">
+          <div className="flex flex-wrap gap-2">
+            {filters.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setActiveFilter(f.id)}
                 className={cn(
-                  "tabular-nums",
-                  activeFilter === f.id ? "text-white/70" : "text-ink-mute"
+                  "rounded-full px-4 py-2 text-sm font-medium transition-colors border",
+                  activeFilter === f.id
+                    ? "bg-brand text-white border-brand"
+                    : "bg-surface text-ink-soft border-line hover:border-ink-mute/40 hover:text-ink"
                 )}
               >
-                ({counts[f.id]})
-              </span>
-            </button>
-          ))}
+                {f.label}{" "}
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    activeFilter === f.id ? "text-white/70" : "text-ink-mute"
+                  )}
+                >
+                  ({counts[f.id]})
+                </span>
+              </button>
+            ))}
+          </div>
+          <select
+            value={agentFilter}
+            onChange={(e) => setAgentFilter(e.target.value)}
+            aria-label="Filter by agent"
+            className={cn(
+              "shrink-0 max-w-[14rem] truncate rounded-full border px-4 py-2 text-sm font-medium transition-colors cursor-pointer focus:outline-none",
+              agentFilter
+                ? "bg-brand text-white border-brand"
+                : "bg-surface text-ink-soft border-line hover:border-ink-mute/40 hover:text-ink"
+            )}
+          >
+            <option value="">All Agents</option>
+            {agentOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
         </div>
 
         {loading && (

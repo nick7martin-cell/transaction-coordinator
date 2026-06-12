@@ -7,6 +7,7 @@ import {
   ensureDefaultTitleParties,
   mergeLenderFromExtraction,
 } from "@/lib/transaction-seed";
+import { preserveLifecycleInExtracted } from "@/lib/transaction-lifecycle";
 import {
   coerceExtractedData,
   mergePartiesFromExtraction,
@@ -74,11 +75,16 @@ export async function POST(
 
     const worksheet = mergeWorksheetFromParties(existingWs, nextParties);
 
+    const extractedPayload = preserveLifecycleInExtracted(
+      merged as unknown as Record<string, unknown>,
+      existing.extracted_data
+    );
+
     const { data: updated, error: updateError } = await supabase
       .from("extractions")
       .update({
         file_name: pdfFile.name,
-        extracted_data: merged,
+        extracted_data: extractedPayload,
         flagged_for_review: merged.flaggedForReview,
         confidence: merged.confidence,
       })

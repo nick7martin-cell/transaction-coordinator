@@ -58,10 +58,12 @@ function Cb({
   k,
   saved,
   onSave,
+  className = "ws-checkbox",
 }: {
   k: string;
   saved?: string;
   onSave: (k: string, v: string) => void;
+  className?: string;
 }) {
   const checked = saved === "true";
   const [isChecked, setIsChecked] = useState(checked);
@@ -79,7 +81,7 @@ function Cb({
         setIsChecked(next);
         onSave(k, next ? "true" : "false");
       }}
-      className="ws-checkbox"
+      className={className}
       aria-label={`Applicable: ${k}`}
     />
   );
@@ -234,6 +236,12 @@ export default function WorksheetPage() {
   );
   // Plain (non-commission) checkbox bound to a free-form worksheet key.
   const cbox = (k: string) => <Cb k={k} saved={ws[k]} onSave={saveField} />;
+  const cboxTop = (k: string) => (
+    <Cb k={k} saved={ws[k]} onSave={saveField} className="ws-checkbox ws-checkbox-top" />
+  );
+  const cboxSurvey = (k: string) => (
+    <Cb k={k} saved={ws[k]} onSave={saveField} className="ws-checkbox ws-checkbox-survey" />
+  );
 
   // Sale / earnest pre-population
   const salePriceStr = data.purchasePrice ? `$${formatMoney(data.purchasePrice)}` : "";
@@ -352,6 +360,7 @@ export default function WorksheetPage() {
 
       {/* ── Printable Form (matches RE/MAX Results CWS 650 03/2025) ── */}
       <div className="worksheet mx-auto" style={{ width: "8.5in" }}>
+       <div className="worksheet-page">
        <div className="ws-content">
 
         {/* Header: RE/MAX Results logo left, CLOSING WORKSHEET centered */}
@@ -366,45 +375,45 @@ export default function WorksheetPage() {
 
         {/* Sale Price / Final Acceptance Date / MLS# — column positions fixed;
             only the underline field widths are shortened to match the reference. */}
-        <div className="ws-line">
-          <div className="ws-seg" style={{ width: "2.5in" }}>
+        <div className="ws-line ws-top-row">
+          <div className="ws-seg ws-top-col1">
             <span className="ws-b">Sale Price $</span>
-            {f({ k: "salePrice", auto: salePriceStr, style: { width: "0.95in" } })}
+            {f({ k: "salePrice", auto: salePriceStr, className: "ws-field-top", style: { width: "1.05in" } })}
           </div>
-          <div className="ws-seg" style={{ width: "3.4in" }}>
+          <div className="ws-seg ws-top-col2">
             <span className="ws-b">Final Acceptance Date:</span>
-            {f({ k: "acceptanceDate", auto: formatDate(data.acceptanceDate), style: { width: "1.28in" } })}
+            {f({ k: "acceptanceDate", auto: formatDate(data.acceptanceDate), className: "ws-field-top", style: { width: "1.28in" } })}
           </div>
-          <div className="ws-seg" style={{ flex: "1 1 0%" }}>
+          <div className="ws-seg ws-top-col3">
             <span className="ws-b">MLS#</span>
-            {f({ k: "mlsNumber", className: "flex-1" })}
+            {f({ k: "mlsNumber", className: "ws-field-top", style: { width: "1.2in" } })}
           </div>
         </div>
 
         {/* Earnest / Closing Date */}
-        <div className="ws-line">
-          <div className="ws-seg" style={{ width: "2.5in" }}>
+        <div className="ws-line ws-top-row">
+          <div className="ws-seg ws-top-col1">
             <span className="ws-b">Earnest $</span>
-            {f({ k: "earnest", auto: earnestStr, style: { width: "1.15in" } })}
+            {f({ k: "earnest", auto: earnestStr, className: "ws-field-top", style: { width: "1.18in" } })}
           </div>
-          <div className="ws-seg" style={{ width: "3.4in" }}>
+          <div className="ws-seg ws-top-col2">
             <span className="ws-b">Closing Date:</span>
-            {f({ k: "closingDate", auto: formatDate(data.closingDate), style: { width: "0.98in" } })}
+            {f({ k: "closingDate", auto: formatDate(data.closingDate), className: "ws-field-top", style: { width: "0.98in" } })}
           </div>
         </div>
 
         {/* Earnest deposited question */}
-        <div className="ws-line">
+        <div className="ws-line ws-earnest-deposit">
           <span>Earnest Money deposited by broker within 3 business days from final acceptance date of PA?</span>
-          <span className="ws-label ml-2">Yes</span>{cbox("earnestDepositedYes")}
-          <span className="ws-label">No</span>{cbox("earnestDepositedNo")}
+          <span className="ws-label ml-2">Yes</span>{cboxTop("earnestDepositedYes")}
+          <span className="ws-label">No</span>{cboxTop("earnestDepositedNo")}
         </div>
-        <div className="ws-line" style={{ justifyContent: "center" }}>
-          <span className="ws-label">TrustFunds</span>{cbox("trustFunds")}
-          <span className="ws-label ml-6">Check</span>{cbox("check")}
+        <div className="ws-line ws-trust-row">
+          <span className="ws-label">TrustFunds</span>{cboxTop("trustFunds")}
+          <span className="ws-label ml-6">Check</span>{cboxTop("check")}
         </div>
 
-        <div className="ws-divider" aria-hidden />
+        <div className="ws-divider ws-divider-first" aria-hidden />
 
         {/* Property Address */}
         <div className="ws-line">
@@ -808,34 +817,37 @@ export default function WorksheetPage() {
           <div className="ws-col">
             <div className="ws-line">
               <span className="ws-b ws-label">PAID FOR BY SELLER/BUYER/ASSOCIATE:</span>
-              {f({ k: "brokerCommPaidBy", auto: brokerCommPaidByAuto, className: "flex-1" })}
+              {f({ k: "brokerCommPaidBy", auto: brokerCommPaidByAuto, className: "flex-1 ws-field-top" })}
             </div>
           </div>
         </div>
 
         {/* COMMISSION NOTES — full width */}
-        <div className="ws-line">
+        <div className="ws-line ws-comm-notes">
           <span className="ws-b ws-label">COMMISSION NOTES:</span>
           {f({ k: "commissionNotes", auto: commissionNotesAuto, className: "flex-1" })}
         </div>
-
-        {/* Survey row — keep above the Lone Wolf logo in print stacking order */}
-        <div className="ws-line ws-survey">
-          <span className="ws-b">Did you enjoy working with this agent?</span>
-          <span className="ws-label ml-1">Yes</span>{cbox("enjoyYes")}
-          <span className="ws-label">No</span>{cbox("enjoyNo")}
-          <span className="ws-b ml-2">Would they be a good fit for RE/MAX Results?</span>
-          <span className="ws-label ml-1">Yes</span>{cbox("fitYes")}
-          <span className="ws-label">No</span>{cbox("fitNo")}
-        </div>
-
-        {/* CWS 650 sits just below the survey row */}
-        <div className="ws-cwsline">CWS 650 (03/2025)</div>
        </div>
+
+        {/* Bottom footer: survey row + CWS line centered in remaining page space */}
+        <div className="ws-bottom">
+          <div className="ws-line ws-survey">
+            <span className="ws-b">Did you enjoy working with this agent?</span>
+            <span className="ws-label ml-1">Yes</span>{cboxSurvey("enjoyYes")}
+            <span className="ws-label">No</span>{cboxSurvey("enjoyNo")}
+            <span className="ws-b ml-2">Would they be a good fit for RE/MAX Results?</span>
+            <span className="ws-label ml-1">Yes</span>{cboxSurvey("fitYes")}
+            <span className="ws-label">No</span>{cboxSurvey("fitNo")}
+          </div>
+          <div className="ws-bottom-space">
+            <div className="ws-cwsline">CWS 650 (03/2025)</div>
+          </div>
+        </div>
 
         {/* Lone Wolf logo pinned to the very bottom-right corner of the page */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/lone-wolf-logo.png" alt="Lone Wolf" className="ws-lonewolf" />
+       </div>
       </div>
 
       {/* ── Global stylesheet ── */}
@@ -864,25 +876,47 @@ export default function WorksheetPage() {
           min-height: 11in;
           box-sizing: border-box;
         }
+        .worksheet-page {
+          display: grid;
+          grid-template-rows: auto 1fr;
+          min-height: 11in;
+          position: relative;
+          box-sizing: border-box;
+        }
         .ws-content {
-          padding: 0.24in 0.26in 0;
+          padding: 0.26in 0.26in 0;
           position: relative;
           z-index: 1;
+          overflow: visible;
+        }
+        .ws-bottom {
+          display: flex;
+          flex-direction: column;
+          padding: 0 0.26in 0.03in;
+          position: relative;
+          z-index: 1;
+          min-height: 0.9in;
+        }
+        .ws-bottom-space {
+          flex: 1 1 auto;
+          display: flex;
+          align-items: flex-start;
+          padding-top: 0.16in;
         }
         .ws-header {
           position: relative;
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: center;
-          min-height: 48px;
-          margin-bottom: 9px;
+          min-height: 54px;
+          margin-bottom: 4px;
+          overflow: visible;
         }
         .ws-logo {
           position: absolute;
           left: 0;
-          top: 50%;
-          transform: translateY(-50%);
-          height: 48px;
+          top: 0;
+          height: 54px;
           width: auto;
         }
         .ws-title {
@@ -890,11 +924,13 @@ export default function WorksheetPage() {
           font-weight: 700;
           text-align: center;
           line-height: 1.05;
+          margin-top: 11px;
         }
         .ws-subtitle {
-          font-size: 8pt;
+          font-size: 9pt;
           text-align: center;
           margin-top: 0px;
+          white-space: nowrap;
         }
         .ws-line {
           display: flex;
@@ -908,13 +944,47 @@ export default function WorksheetPage() {
           align-items: baseline;
           gap: 3px;
         }
+        .ws-top-row {
+          display: grid;
+          grid-template-columns: 2.38in 3.12in auto;
+          align-items: center;
+          column-gap: 0;
+          padding: 1px 0;
+        }
+        .ws-top-row:first-of-type {
+          padding-top: 2px;
+          padding-bottom: 0;
+        }
+        .ws-top-row + .ws-top-row {
+          padding-top: 0;
+        }
+        .ws-top-col1 { width: auto; flex-shrink: 0; }
+        .ws-top-col2 {
+          width: auto;
+          flex-shrink: 0;
+          margin-left: 0.34in;
+        }
+        .ws-top-col3 {
+          flex-shrink: 0;
+          margin-left: 0.62in;
+        }
+        .ws-earnest-deposit {
+          flex-wrap: nowrap;
+          font-size: 11pt;
+        }
+        .ws-trust-row {
+          padding-left: 2.4in;
+        }
         .ws-b { font-weight: 700; }
         .ws-note { font-size: 7.5pt; }
         .ws-label { white-space: nowrap; }
         /* Section divider: room before the line, tight gap after it. */
         .ws-divider {
           border-top: 1.5pt solid #000;
-          margin: 8px 0 14px;
+          margin: 6px 0 12px;
+        }
+        .ws-divider-first {
+          margin: 3px 0 9px;
         }
         .ws-subhead {
           font-weight: 700;
@@ -965,7 +1035,7 @@ export default function WorksheetPage() {
         /* Filled-in values render in Courier-Bold (9pt) like the official form. */
         .ws-field {
           border: 0;
-          border-bottom: 1.2px solid #000;
+          border-bottom: 1.475px solid #000;
           background: transparent;
           font-family: "Courier New", Courier, monospace;
           font-weight: 700;
@@ -977,6 +1047,9 @@ export default function WorksheetPage() {
           line-height: 1.2;
         }
         .ws-field.flex-1 { flex: 1 1 0%; }
+        .ws-field.ws-field-top {
+          border-bottom-width: 1.75px;
+        }
         .ws-field:focus {
           background: #eff6ff;
           border-bottom-color: #2563eb;
@@ -985,13 +1058,17 @@ export default function WorksheetPage() {
           position: relative;
           z-index: 2;
           flex-wrap: nowrap;
+          margin-top: 5px;
+        }
+        .ws-comm-notes {
+          margin-bottom: 0;
         }
         .ws-checkbox {
           -webkit-appearance: none;
           appearance: none;
           width: 12px;
           height: 12px;
-          border: 1.5px solid #000;
+          border: 2px solid #000;
           background: #fff;
           position: relative;
           z-index: 2;
@@ -1001,44 +1078,117 @@ export default function WorksheetPage() {
           top: 1px;
           cursor: pointer;
         }
+        .ws-checkbox:checked::before,
         .ws-checkbox:checked::after {
           content: "";
           position: absolute;
-          left: 3px;
-          top: 0px;
-          width: 4px;
-          height: 8px;
-          border: solid #000;
-          border-width: 0 2px 2px 0;
-          transform: rotate(45deg);
+          left: 50%;
+          top: 50%;
+          width: 7px;
+          height: 1.85px;
+          background: #000;
+          border: none;
+          border-radius: 1px;
+        }
+        .ws-checkbox:checked::before {
+          transform: translate(-50%, -50%) rotate(45deg);
+        }
+        .ws-checkbox:checked::after {
+          transform: translate(-50%, -50%) rotate(-45deg);
+        }
+        .ws-checkbox-top {
+          width: 14px;
+          height: 14px;
+          border-width: 1.65px;
+          top: 2px;
+        }
+        .ws-checkbox-top:checked::before,
+        .ws-checkbox-top:checked::after {
+          width: 8px;
+          height: 1.75px;
+          border-radius: 1px;
+        }
+        .ws-checkbox-survey {
+          width: 14px;
+          height: 14px;
+          border-width: 1.55px;
+          top: 2px;
+        }
+        .ws-checkbox-survey:checked::before,
+        .ws-checkbox-survey:checked::after {
+          width: 8px;
+          height: 1.65px;
+          border-radius: 1px;
         }
         .ws-cwsline {
           font-size: 8pt;
           color: #000;
-          margin-top: 6px;
-          padding: 0 0.26in;
+          margin: 0;
+          padding: 0;
         }
         .ws-lonewolf {
           position: absolute;
-          right: 0.14in;
-          bottom: 0.1in;
-          width: 1.2in;
+          right: calc(0.26in + 4px);
+          bottom: 4px;
+          width: 1.15in;
           height: auto;
           z-index: 0;
+          pointer-events: none;
         }
         @media print {
-          @page { size: letter portrait; margin: 0; }
-          html, body { margin: 0; padding: 0; }
+          @page {
+            size: letter portrait;
+            margin: 0;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 8.5in;
+            height: 11in;
+            overflow: hidden;
+          }
           .no-print { display: none !important; }
+          .min-h-screen {
+            min-height: 0 !important;
+            height: 11in !important;
+            overflow: hidden;
+          }
           .worksheet {
-            width: 100% !important;
-            min-height: 11in;
+            width: 8.5in !important;
+            min-height: 0 !important;
+            height: 11in !important;
+            max-height: 11in !important;
+            overflow: hidden;
+            padding-top: 0 !important;
+            box-sizing: border-box;
+            page-break-after: avoid !important;
+            break-after: avoid-page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid-page !important;
+          }
+          .worksheet-page {
+            position: static !important;
+            min-height: 10.5in !important;
+            height: 10.5in !important;
+            display: grid !important;
+            grid-template-rows: auto 1fr !important;
+            box-sizing: border-box;
+          }
+          .ws-content {
+            padding-top: 0.26in !important;
+            z-index: 1;
+          }
+          .ws-bottom {
+            min-height: 0 !important;
           }
           .ws-field {
-            border-bottom: 1.2px solid #000 !important;
+            border-bottom: 1.475px solid #000 !important;
             background: transparent !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+          }
+          .ws-field.ws-field-top {
+            border-bottom: 1.75px solid #000 !important;
           }
           .ws-field:focus { background: transparent; }
           .ws-divider {
@@ -1051,14 +1201,20 @@ export default function WorksheetPage() {
             print-color-adjust: exact;
             position: relative;
             z-index: 2;
-            border: 1.5px solid #000 !important;
+            border: 2px solid #000 !important;
             background: #fff !important;
           }
-          .ws-lonewolf {
-            z-index: 0;
+          .ws-checkbox-top {
+            border: 1.65px solid #000 !important;
           }
-          .ws-content {
-            z-index: 1;
+          .ws-checkbox-survey {
+            border: 1.55px solid #000 !important;
+          }
+          .ws-lonewolf {
+            position: absolute !important;
+            right: 9px !important;
+            bottom: 9px !important;
+            z-index: 0;
           }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }

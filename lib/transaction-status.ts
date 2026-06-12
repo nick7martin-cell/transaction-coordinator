@@ -41,7 +41,6 @@ export const statusConfig: Record<
 export type TransactionFilter =
   | "all"
   | "needs_review"
-  | "closing_soon"
   | "closed"
   | "cancelled";
 
@@ -50,20 +49,12 @@ export function matchesFilter(
   filter: TransactionFilter
 ): boolean {
   const persisted = resolveStatus(transaction);
-  const days = daysUntilClosing(transaction.extracted_data.closingDate);
 
   switch (filter) {
     case "all":
       return persisted === "active";
     case "needs_review":
       return persisted === "active" && transaction.flagged_for_review;
-    case "closing_soon":
-      return (
-        persisted === "active" &&
-        days != null &&
-        days >= 0 &&
-        days <= 10
-      );
     case "closed":
       return persisted === "closed";
     case "cancelled":

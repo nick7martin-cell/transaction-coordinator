@@ -430,6 +430,7 @@ export function ExtractionDetail({
   } | null>(null);
   const [markingReviewed, setMarkingReviewed] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [savingAcceptanceDate, setSavingAcceptanceDate] = useState(false);
   const paInputRef = useRef<HTMLInputElement>(null);
   const seededRef = useRef(false);
@@ -711,6 +712,7 @@ export function ExtractionDetail({
 
   async function handleStatusChange(next: PersistedTransactionStatus) {
     setUpdatingStatus(true);
+    setStatusError(null);
     try {
       const res = await fetch(`/api/transactions/${transaction.id}`, {
         method: "PATCH",
@@ -720,7 +722,11 @@ export function ExtractionDetail({
       const d = await res.json();
       if (res.ok && d.transaction) {
         onTransactionChange?.(d.transaction);
+      } else {
+        setStatusError(d.error || "Could not update transaction status");
       }
+    } catch {
+      setStatusError("Could not update transaction status");
     } finally {
       setUpdatingStatus(false);
     }
@@ -1056,6 +1062,9 @@ export function ExtractionDetail({
         </p>
 
         <div className="flex flex-wrap items-center gap-3 mb-5 pb-5 border-b border-line">
+          {statusError && (
+            <p className="w-full text-sm text-danger-ink">{statusError}</p>
+          )}
           {persistedStatus === "active" && (
             <>
               <button
