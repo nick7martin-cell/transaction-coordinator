@@ -49,9 +49,10 @@ export async function PATCH(
 
   const hasFlagged = "flagged_for_review" in body;
   const hasAcceptance = "acceptanceDate" in body;
+  const hasClosing = "closingDate" in body;
   const hasStatus = "status" in body;
 
-  if (!hasFlagged && !hasAcceptance && !hasStatus) {
+  if (!hasFlagged && !hasAcceptance && !hasClosing && !hasStatus) {
     return Response.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
@@ -82,6 +83,13 @@ export async function PATCH(
     extractedBase = { ...extractedBase, acceptanceDate };
   }
 
+  if (hasClosing) {
+    const raw = body.closingDate;
+    const closingDate =
+      typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+    extractedBase = { ...extractedBase, closingDate };
+  }
+
   if (hasStatus) {
     if (!isPersistedStatus(body.status)) {
       return Response.json({ error: "Invalid status" }, { status: 400 });
@@ -95,7 +103,7 @@ export async function PATCH(
     );
   }
 
-  if (hasAcceptance || hasStatus) {
+  if (hasAcceptance || hasClosing || hasStatus) {
     updates.extracted_data = extractedBase;
   }
 

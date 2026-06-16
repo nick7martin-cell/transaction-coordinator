@@ -15,6 +15,10 @@ export interface ExtractedData {
   financingType: FinancingType;
   financingPercentage: number | null;
   buyerBrokerCommissionPct: number | null;
+  /** Seller-paid buyer closing costs in dollars (MN PA line 159). */
+  sellerPaidBuyerConcessions: number | null;
+  /** Seller-paid buyer closing costs as % of purchase price when stated that way. */
+  sellerPaidBuyerConcessionsPct: number | null;
   mlsNumber: string | null;
   pidNumber: string | null;
   buyerNames: string[];
@@ -376,6 +380,8 @@ export function coerceExtractedData(
     financingType:                        (str("financingType", "financing_type") as FinancingType),
     financingPercentage:                  num("financingPercentage", "financing_percentage"),
     buyerBrokerCommissionPct:             num("buyerBrokerCommissionPct", "buyer_broker_commission_pct"),
+    sellerPaidBuyerConcessions:           num("sellerPaidBuyerConcessions", "seller_paid_buyer_concessions"),
+    sellerPaidBuyerConcessionsPct:        num("sellerPaidBuyerConcessionsPct", "seller_paid_buyer_concessions_pct"),
     mlsNumber:                            str("mlsNumber", "mls_number"),
     pidNumber:                            str("pidNumber", "pid_number"),
     buyerNames:                           arr("buyerNames", "buyer_names"),

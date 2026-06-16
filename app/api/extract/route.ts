@@ -10,7 +10,7 @@ import {
   isPdfFile,
   primaryFileName,
 } from "@/lib/upload-files";
-import { applyWorksheetDefaults } from "@/lib/worksheet-defaults";
+import { applyWorksheetDefaults, concessionsWorksheetFields } from "@/lib/worksheet-defaults";
 import type { Contact } from "@/lib/types";
 
 export async function POST(req: Request) {
@@ -108,6 +108,7 @@ export async function POST(req: Request) {
     const parties = buildInitialParties(result, (contacts ?? []) as Contact[]);
     const worksheet = applyWorksheetDefaults({}, {
       ...partiesToWorksheet(parties),
+      ...concessionsWorksheetFields(result),
       _parties: parties,
     });
 

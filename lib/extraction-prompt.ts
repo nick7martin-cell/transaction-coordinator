@@ -10,6 +10,8 @@ export const EXTRACTION_JSON_SCHEMA = `{
   "financingType": "conventional" | "FHA" | "VA" | "cash" or null,
   "financingPercentage": number or null (loan-to-value or down payment percentage as stated),
   "buyerBrokerCommissionPct": number or null (buyer broker compensation %, e.g. 2.7 — on Minnesota PA this is line 406),
+  "sellerPaidBuyerConcessions": number or null (dollar amount seller pays toward buyer closing costs — on Minnesota PA this is line 159; null if none or only a percentage is stated),
+  "sellerPaidBuyerConcessionsPct": number or null (percentage of purchase price when line 159 states seller-paid buyer closing costs as a % instead of dollars; e.g. 3 for 3%; null if only dollars or none),
   "mlsNumber": string or null,
   "pidNumber": string or null (property ID / parcel number),
   "buyerNames": array of strings (all buyers named on agreement),
@@ -48,6 +50,7 @@ RULES:
 - financingType must be one of: conventional, FHA, VA, cash — or null if not specified
 - Dates must be YYYY-MM-DD when possible; infer from contract language if only relative dates are given
 - buyerBrokerCommissionPct: look for buyer broker compensation percentage (on MN purchase agreements this is line 406); return as a decimal number like 2.7, not 0.027
+- sellerPaidBuyerConcessions / sellerPaidBuyerConcessionsPct: on Minnesota purchase agreements, line 159 covers seller-paid buyer closing costs (buyer concessions). Extract the dollar amount into sellerPaidBuyerConcessions when a $ amount is filled in; extract the percentage into sellerPaidBuyerConcessionsPct when stated as % of purchase price. Use null for whichever form is not used. If line 159 is blank or N/A, both are null.
 - mlsNumber: look for MLS# or listing number anywhere in the document
 - pidNumber: look for Property ID, PID, Parcel ID, or Tax ID number
 - contingencies: list each distinct contingency (financing, inspection, appraisal, sale of buyer property, etc.)

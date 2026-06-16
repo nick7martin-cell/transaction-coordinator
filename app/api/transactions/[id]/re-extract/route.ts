@@ -7,6 +7,7 @@ import {
   ensureDefaultTitleParties,
   mergeLenderFromExtraction,
 } from "@/lib/transaction-seed";
+import { mergeConcessionsIntoWorksheet } from "@/lib/worksheet-defaults";
 import { preserveLifecycleInExtracted } from "@/lib/transaction-lifecycle";
 import {
   coerceExtractedData,
@@ -73,7 +74,10 @@ export async function POST(
       ? [...partiesAdded, lenderMerge.added]
       : partiesAdded;
 
-    const worksheet = mergeWorksheetFromParties(existingWs, nextParties);
+    const worksheet = mergeConcessionsIntoWorksheet(
+      mergeWorksheetFromParties(existingWs, nextParties),
+      merged
+    );
 
     const extractedPayload = preserveLifecycleInExtracted(
       merged as unknown as Record<string, unknown>,

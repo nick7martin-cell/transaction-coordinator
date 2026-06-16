@@ -25,6 +25,14 @@ export function normalizeExtraction(raw: Record<string, unknown>): ExtractedData
       typeof raw.buyerBrokerCommissionPct === "number"
         ? raw.buyerBrokerCommissionPct
         : null,
+    sellerPaidBuyerConcessions:
+      typeof raw.sellerPaidBuyerConcessions === "number"
+        ? raw.sellerPaidBuyerConcessions
+        : null,
+    sellerPaidBuyerConcessionsPct:
+      typeof raw.sellerPaidBuyerConcessionsPct === "number"
+        ? raw.sellerPaidBuyerConcessionsPct
+        : null,
     mlsNumber: (raw.mlsNumber as string) ?? null,
     pidNumber: (raw.pidNumber as string) ?? null,
     buyerNames: Array.isArray(raw.buyerNames) ? raw.buyerNames.map(String) : [],

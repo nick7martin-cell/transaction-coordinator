@@ -21,6 +21,7 @@ import {
 } from "@/lib/types";
 import {
   defaultCommissionCheckboxValues,
+  concessionsWorksheetFields,
   WORKSHEET_FIELD_DEFAULTS,
   type CommissionCheckboxKey,
 } from "@/lib/worksheet-defaults";
@@ -246,6 +247,21 @@ export default function WorksheetPage() {
   // Sale / earnest pre-population
   const salePriceStr = data.purchasePrice ? `$${formatMoney(data.purchasePrice)}` : "";
   const earnestStr   = data.earnestMoney  ? `$${formatMoney(data.earnestMoney)}`  : "";
+  const concessionsFromExtraction = concessionsWorksheetFields(data);
+  const concessionsDollarsAuto =
+    concessionsFromExtraction.concessionsDollars ??
+    WORKSHEET_FIELD_DEFAULTS.concessionsDollars;
+  const concessionsDollarsSaved =
+    ws.concessionsDollars &&
+    ws.concessionsDollars !== "0.00" &&
+    ws.concessionsDollars !== "0"
+      ? ws.concessionsDollars
+      : undefined;
+  const concessionsPctAuto = concessionsFromExtraction.concessionsPct;
+  const concessionsPctSaved =
+    ws.concessionsPct && ws.concessionsPct !== "0"
+      ? ws.concessionsPct
+      : undefined;
 
   // Commission values (#7 — fall back to extraction data for dollar amount)
   const extractedBuyerDollars =
@@ -646,9 +662,19 @@ export default function WorksheetPage() {
             </div>
             <div className="ws-line">
               <span className="ws-label">Seller Paid Buyer Concessions = $</span>
-              {f({ k: "concessionsDollars", auto: WORKSHEET_FIELD_DEFAULTS.concessionsDollars, style: { width: "90px" } })}
+              {f({
+                k: "concessionsDollars",
+                auto: concessionsDollarsAuto,
+                saved: concessionsDollarsSaved,
+                style: { width: "90px" },
+              })}
               <span className="ws-label ml-1">or</span>
-              {f({ k: "concessionsPct", style: { width: "50px" } })}
+              {f({
+                k: "concessionsPct",
+                auto: concessionsPctAuto,
+                saved: concessionsPctSaved,
+                style: { width: "50px" },
+              })}
               <span className="ws-label">%</span>
             </div>
             <div className="ws-line">

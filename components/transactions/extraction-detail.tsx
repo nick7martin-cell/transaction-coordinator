@@ -201,17 +201,38 @@ function HeroPhoto({
 
 // ── Deadline Card ─────────────────────────────────────────────────────────────
 
-function DeadlineCard({
+function EditableDeadlineCard({
   label,
   date,
   icon: Icon,
   daysLeft,
+  saving,
+  onSave,
 }: {
   label: string;
   date: string | null | undefined;
   icon: React.ElementType;
   daysLeft: number | null;
+  saving?: boolean;
+  onSave: (isoDate: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState(date ?? "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) setLocal(date ?? "");
+  }, [date, editing]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  function commit() {
+    setEditing(false);
+    if (local && local !== (date ?? "")) onSave(local);
+  }
+
   const variant =
     daysLeft === null || daysLeft < 0 ? "muted"
     : daysLeft <= 2 ? "danger"
@@ -240,9 +261,37 @@ function DeadlineCard({
         <p className={cn("text-[11px] font-semibold uppercase tracking-wider", styles.icon)}>
           {label}
         </p>
-        <p className="text-[16px] font-semibold text-ink mt-0.5">
-          {date ? formatDate(date) : "—"}
-        </p>
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="date"
+            value={local}
+            onChange={(e) => setLocal(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") {
+                setLocal(date ?? "");
+                setEditing(false);
+              }
+            }}
+            className="mt-1 rounded-lg border border-line bg-surface px-2.5 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            disabled={saving}
+            title="Click to edit closing date"
+            className="mt-0.5 inline-flex items-center gap-1.5 text-[16px] font-semibold text-ink rounded-md -ml-1 px-1 hover:bg-black/5 transition-colors disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin text-ink-mute" /> : null}
+            <span className={!date ? "text-ink-mute" : undefined}>
+              {date ? formatDate(date) : "—"}
+            </span>
+            <Pencil className="h-3.5 w-3.5 shrink-0 text-ink-mute" />
+          </button>
+        )}
       </div>
       {daysLabel && (
         <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold shrink-0", styles.badge)}>
@@ -432,6 +481,7 @@ export function ExtractionDetail({
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [savingAcceptanceDate, setSavingAcceptanceDate] = useState(false);
+  const [savingClosingDate, setSavingClosingDate] = useState(false);
   const paInputRef = useRef<HTMLInputElement>(null);
   const seededRef = useRef(false);
 
@@ -749,6 +799,23 @@ export function ExtractionDetail({
     }
   }
 
+  async function saveClosingDate(isoDate: string) {
+    setSavingClosingDate(true);
+    try {
+      const res = await fetch(`/api/transactions/${transaction.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ closingDate: isoDate }),
+      });
+      const d = await res.json();
+      if (res.ok && d.transaction) {
+        onTransactionChange?.(d.transaction);
+      }
+    } finally {
+      setSavingClosingDate(false);
+    }
+  }
+
   const persistedStatus = resolveStatus(transaction);
   const daysValue =
     persistedStatus === "cancelled"
@@ -866,11 +933,13 @@ export function ExtractionDetail({
       {/* ─── 4. Deadline tracker ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <InspectionPeriodCard inspectionPeriodDays={data.inspectionPeriodDays} />
-        <DeadlineCard
+        <EditableDeadlineCard
           label="Closing Date"
           date={data.closingDate}
           icon={CheckCircle}
           daysLeft={daysUntil(data.closingDate)}
+          saving={savingClosingDate}
+          onSave={saveClosingDate}
         />
       </div>
 
@@ -940,6 +1009,12 @@ export function ExtractionDetail({
             value={data.acceptanceDate}
             saving={savingAcceptanceDate}
             onSave={saveAcceptanceDate}
+          />
+          <EditableDateRow
+            label="Closing date"
+            value={data.closingDate}
+            saving={savingClosingDate}
+            onSave={saveClosingDate}
           />
           {inspectionLabel && <InfoRow label="Inspection period" value={inspectionLabel} />}
         </div>

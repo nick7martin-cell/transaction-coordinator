@@ -18,6 +18,9 @@ import {
 } from "@/lib/upload-files";
 import { cn } from "@/lib/utils";
 
+/** Hard cap on Vercel serverless request bodies — not raised via next.config. */
+const MAX_UPLOAD_BYTES = Math.floor(4.5 * 1024 * 1024);
+
 type UploadZoneProps = {
   onSuccess?: () => void;
   /** Dashboard layout: no badge, centered intro text and action buttons. */
@@ -38,6 +41,59 @@ function mergeFiles(existing: File[], incoming: File[]): File[] {
     merged.push(file);
   }
   return merged;
+}
+
+function totalUploadBytes(files: File[]): number {
+  return files.reduce((sum, file) => sum + file.size, 0);
+}
+
+function payloadTooLargeMessage(totalBytes: number): string {
+  const mb = (totalBytes / (1024 * 1024)).toFixed(1);
+  return `These files total ${mb} MB, which exceeds the 4.5 MB upload limit. Try a compressed PDF or remove large attachments before extracting.`;
+}
+
+async function postExtract(
+  formData: FormData
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const res = await fetch("/api/extract", {
+    method: "POST",
+    body: formData,
+  });
+  const text = await res.text();
+
+  let data: { error?: string; id?: string } = {};
+  try {
+    data = JSON.parse(text) as { error?: string; id?: string };
+  } catch {
+    if (
+      res.status === 413 ||
+      /request entity too large|function_payload_too_large|body exceeded/i.test(
+        text
+      )
+    ) {
+      return {
+        ok: false,
+        error:
+          "The upload exceeds the 4.5 MB size limit. Try a compressed PDF or remove large attachments before extracting.",
+      };
+    }
+    return {
+      ok: false,
+      error: res.ok
+        ? "Upload failed — unexpected server response."
+        : `Upload failed (${res.status}). Please try again.`,
+    };
+  }
+
+  if (!res.ok) {
+    return { ok: false, error: data.error || "Upload failed" };
+  }
+
+  if (!data.id) {
+    return { ok: false, error: "Upload failed — unexpected server response." };
+  }
+
+  return { ok: true, id: data.id };
 }
 
 export function UploadZone({
@@ -71,6 +127,10 @@ export function UploadZone({
         setError("Only one PDF purchase agreement can be included.");
         return prev;
       }
+      if (totalUploadBytes(merged) > MAX_UPLOAD_BYTES) {
+        setError(payloadTooLargeMessage(totalUploadBytes(merged)));
+        return prev;
+      }
       setError(null);
       return merged;
     });
@@ -89,6 +149,12 @@ export function UploadZone({
       return;
     }
 
+    const uploadBytes = totalUploadBytes(selectedFiles);
+    if (uploadBytes > MAX_UPLOAD_BYTES) {
+      setError(payloadTooLargeMessage(uploadBytes));
+      return;
+    }
+
     setUploading(true);
     setError(null);
 
@@ -102,22 +168,17 @@ export function UploadZone({
     }
 
     try {
-      const res = await fetch("/api/extract", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Upload failed");
+      const result = await postExtract(formData);
+      if (!result.ok) {
+        setError(result.error);
         return;
       }
 
       onSuccess?.();
-      router.push(`/transactions/${data.id}`);
+      router.push(`/transactions/${result.id}`);
       router.refresh();
-    } catch (err) {
-      setError("Something went wrong: " + String(err));
+    } catch {
+      setError("Something went wrong. Please try again.");
     } finally {
       setUploading(false);
     }

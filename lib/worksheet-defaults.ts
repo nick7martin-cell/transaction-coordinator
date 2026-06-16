@@ -1,5 +1,6 @@
 import type { CommissionResult } from "@/lib/commission";
-import type { FinancingType } from "@/lib/types";
+import { formatMoney } from "@/lib/commission";
+import type { ExtractedData, FinancingType } from "@/lib/types";
 
 /** Default values seeded into worksheet JSONB when a transaction is first saved. */
 export const WORKSHEET_FIELD_DEFAULTS: Record<string, string> = {
@@ -70,9 +71,59 @@ export function applyWorksheetDefaults(
 ): Record<string, unknown> {
   const result = { ...merged };
   for (const [k, v] of Object.entries(WORKSHEET_FIELD_DEFAULTS)) {
-    if (!(k in (existing ?? {}))) {
+    if (!(k in (existing ?? {})) && !(k in merged)) {
       result[k] = v;
     }
   }
   return result;
+}
+
+/** Map extracted PA concessions (line 159) onto closing worksheet keys. */
+export function concessionsWorksheetFields(
+  extracted: Pick<
+    ExtractedData,
+    "sellerPaidBuyerConcessions" | "sellerPaidBuyerConcessionsPct"
+  >
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (
+    extracted.sellerPaidBuyerConcessions != null &&
+    extracted.sellerPaidBuyerConcessions > 0
+  ) {
+    out.concessionsDollars = formatMoney(extracted.sellerPaidBuyerConcessions);
+  }
+  if (
+    extracted.sellerPaidBuyerConcessionsPct != null &&
+    extracted.sellerPaidBuyerConcessionsPct > 0
+  ) {
+    out.concessionsPct = String(extracted.sellerPaidBuyerConcessionsPct);
+  }
+  return out;
+}
+
+/** Fill blank worksheet concession fields from extraction (re-extract / backfill). */
+export function mergeConcessionsIntoWorksheet(
+  existingWs: Record<string, unknown>,
+  extracted: Pick<
+    ExtractedData,
+    "sellerPaidBuyerConcessions" | "sellerPaidBuyerConcessionsPct"
+  >
+): Record<string, unknown> {
+  const ws = { ...existingWs };
+  const fromExtraction = concessionsWorksheetFields(extracted);
+
+  for (const [key, value] of Object.entries(fromExtraction)) {
+    const current = ws[key];
+    if (
+      current === undefined ||
+      current === null ||
+      current === "" ||
+      current === "0" ||
+      current === "0.00"
+    ) {
+      ws[key] = value;
+    }
+  }
+
+  return ws;
 }

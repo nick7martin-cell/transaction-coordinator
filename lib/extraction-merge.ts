@@ -12,6 +12,8 @@ const FIELD_LABELS: Partial<Record<keyof ExtractedData, string>> = {
   financingType: "Financing type",
   financingPercentage: "Financing percentage",
   buyerBrokerCommissionPct: "Buyer broker commission %",
+  sellerPaidBuyerConcessions: "Seller paid buyer concessions ($)",
+  sellerPaidBuyerConcessionsPct: "Seller paid buyer concessions (%)",
   mlsNumber: "MLS number",
   pidNumber: "PID number",
   buyerNames: "Buyer name(s)",
