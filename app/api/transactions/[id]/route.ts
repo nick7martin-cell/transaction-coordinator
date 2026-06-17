@@ -11,6 +11,19 @@ import {
 import type { Transaction } from "@/lib/types";
 import { coerceExtractedData } from "@/lib/types";
 
+function parsePurchasePrice(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[$,\s]/g, "");
+    if (!cleaned) return null;
+    const n = Number(cleaned);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -50,9 +63,10 @@ export async function PATCH(
   const hasFlagged = "flagged_for_review" in body;
   const hasAcceptance = "acceptanceDate" in body;
   const hasClosing = "closingDate" in body;
+  const hasPurchasePrice = "purchasePrice" in body;
   const hasStatus = "status" in body;
 
-  if (!hasFlagged && !hasAcceptance && !hasClosing && !hasStatus) {
+  if (!hasFlagged && !hasAcceptance && !hasClosing && !hasPurchasePrice && !hasStatus) {
     return Response.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
@@ -90,6 +104,14 @@ export async function PATCH(
     extractedBase = { ...extractedBase, closingDate };
   }
 
+  if (hasPurchasePrice) {
+    const purchasePrice = parsePurchasePrice(body.purchasePrice);
+    if (purchasePrice == null) {
+      return Response.json({ error: "Invalid purchase price" }, { status: 400 });
+    }
+    extractedBase = { ...extractedBase, purchasePrice };
+  }
+
   if (hasStatus) {
     if (!isPersistedStatus(body.status)) {
       return Response.json({ error: "Invalid status" }, { status: 400 });
@@ -103,7 +125,7 @@ export async function PATCH(
     );
   }
 
-  if (hasAcceptance || hasClosing || hasStatus) {
+  if (hasAcceptance || hasClosing || hasPurchasePrice || hasStatus) {
     updates.extracted_data = extractedBase;
   }
 

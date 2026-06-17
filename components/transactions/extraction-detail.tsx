@@ -10,6 +10,7 @@ import {
   formatCurrency,
   formatDate,
   formatPercent,
+  parseCurrencyInput,
   daysUntilClosing,
 } from "@/lib/format";
 import { teamSteadyEmailFor } from "@/lib/agents";
@@ -406,6 +407,114 @@ function EditableDateRow({
   );
 }
 
+function EditableCurrencyField({
+  value,
+  saving,
+  onSave,
+  variant = "row",
+  label,
+}: {
+  value: number | null;
+  saving?: boolean;
+  onSave: (amount: number) => void;
+  variant?: "row" | "hero";
+  label?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState(value != null ? String(value) : "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) setLocal(value != null ? String(value) : "");
+  }, [value, editing]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  function commit() {
+    setEditing(false);
+    const parsed = parseCurrencyInput(local);
+    if (parsed != null && parsed !== value) onSave(parsed);
+    else setLocal(value != null ? String(value) : "");
+  }
+
+  const display = formatCurrency(value);
+  const isHero = variant === "hero";
+
+  if (editing) {
+    const input = (
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="decimal"
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            setLocal(value != null ? String(value) : "");
+            setEditing(false);
+          }
+        }}
+        placeholder="500000"
+        className={
+          isHero
+            ? "w-full max-w-xs rounded-lg border border-line bg-surface px-3 py-2 text-[28px] md:text-[36px] font-semibold text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+            : "rounded-lg border border-line bg-surface px-2.5 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+        }
+      />
+    );
+
+    if (isHero) return input;
+
+    return (
+      <div className="flex justify-between items-center gap-4 py-2.5 border-b border-line/60 last:border-0">
+        <span className="text-sm text-ink-soft">{label}</span>
+        {input}
+      </div>
+    );
+  }
+
+  const button = (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      disabled={saving}
+      title="Click to edit purchase price"
+      className={
+        isHero
+          ? "inline-flex items-center gap-2 text-left rounded-md -ml-1 px-1 hover:bg-line/30 transition-colors disabled:opacity-50"
+          : "inline-flex items-center gap-1.5 text-sm font-medium text-ink text-right rounded-md px-1 -mr-1 hover:bg-line/50 transition-colors disabled:opacity-50"
+      }
+    >
+      {saving ? <Loader2 className={cn("animate-spin text-ink-mute", isHero ? "h-5 w-5" : "h-3.5 w-3.5")} /> : null}
+      <span
+        className={
+          isHero
+            ? "text-[40px] md:text-[52px] font-semibold tracking-tight text-ink leading-none"
+            : !value
+              ? "text-ink-mute"
+              : undefined
+        }
+      >
+        {display}
+      </span>
+      <Pencil className={cn("shrink-0 text-ink-mute", isHero ? "h-4 w-4" : "h-3.5 w-3.5")} />
+    </button>
+  );
+
+  if (isHero) return button;
+
+  return (
+    <div className="flex justify-between items-center gap-4 py-2.5 border-b border-line/60 last:border-0">
+      <span className="text-sm text-ink-soft">{label}</span>
+      {button}
+    </div>
+  );
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function ExtractionDetail({
@@ -482,6 +591,7 @@ export function ExtractionDetail({
   const [statusError, setStatusError] = useState<string | null>(null);
   const [savingAcceptanceDate, setSavingAcceptanceDate] = useState(false);
   const [savingClosingDate, setSavingClosingDate] = useState(false);
+  const [savingPurchasePrice, setSavingPurchasePrice] = useState(false);
   const paInputRef = useRef<HTMLInputElement>(null);
   const seededRef = useRef(false);
 
@@ -816,6 +926,23 @@ export function ExtractionDetail({
     }
   }
 
+  async function savePurchasePrice(amount: number) {
+    setSavingPurchasePrice(true);
+    try {
+      const res = await fetch(`/api/transactions/${transaction.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purchasePrice: amount }),
+      });
+      const d = await res.json();
+      if (res.ok && d.transaction) {
+        onTransactionChange?.(d.transaction);
+      }
+    } finally {
+      setSavingPurchasePrice(false);
+    }
+  }
+
   const persistedStatus = resolveStatus(transaction);
   const daysValue =
     persistedStatus === "cancelled"
@@ -847,9 +974,12 @@ export function ExtractionDetail({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_1fr] lg:items-stretch md:gap-8">
           {/* Left — price, address, days-to-close pill, worksheet button */}
           <div className="flex flex-col">
-            <p className="text-[40px] md:text-[52px] font-semibold tracking-tight text-ink leading-none">
-              {formatCurrency(data.purchasePrice)}
-            </p>
+            <EditableCurrencyField
+              variant="hero"
+              value={data.purchasePrice}
+              saving={savingPurchasePrice}
+              onSave={savePurchasePrice}
+            />
             <p className="mt-3 text-[15px] text-ink-soft">
               {data.propertyAddress || "Address pending"}
             </p>
@@ -995,7 +1125,12 @@ export function ExtractionDetail({
         )}
 
         <div className="p-6 space-y-0.5">
-          <InfoRow label="Purchase price" value={formatCurrency(data.purchasePrice)} />
+          <EditableCurrencyField
+            label="Purchase price"
+            value={data.purchasePrice}
+            saving={savingPurchasePrice}
+            onSave={savePurchasePrice}
+          />
           <InfoRow
             label="Financing"
             value={

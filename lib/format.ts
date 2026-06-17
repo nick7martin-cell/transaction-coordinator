@@ -7,6 +7,15 @@ export function formatCurrency(value: number | null | undefined): string {
   }).format(value);
 }
 
+/** Parse user-entered currency text (e.g. "$500,000") into a positive number. */
+export function parseCurrencyInput(value: string): number | null {
+  const cleaned = value.replace(/[$,\s]/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value + "T12:00:00");
