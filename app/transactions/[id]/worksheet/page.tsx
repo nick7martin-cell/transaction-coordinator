@@ -27,6 +27,7 @@ import {
 } from "@/lib/worksheet-defaults";
 import { OTHER_SIDE_TITLE_UNKNOWN } from "@/lib/transaction-seed";
 import { findAgentIdByName, teamSteadyEmailFor } from "@/lib/agents";
+import { canonicalContactEmail, normalizeParties } from "@/lib/canonical-contacts";
 
 // ── Inline field (uncontrolled input that saves on blur) ──────────────────────
 
@@ -200,10 +201,11 @@ export default function WorksheetPage() {
 
   // ── Parties roster is the source of truth for every contact field. ──────────
   // Falls back to the extraction only when no roster has been saved yet.
-  const parties: TransactionParty[] =
+  const parties: TransactionParty[] = normalizeParties(
     meta?.parties && meta.parties.length > 0
       ? meta.parties
-      : seedPartiesFromExtraction(data);
+      : seedPartiesFromExtraction(data)
+  );
 
   const buyers       = parties.filter((p) => p.role === "buyer");
   const sellers      = parties.filter((p) => p.role === "seller");
@@ -216,9 +218,23 @@ export default function WorksheetPage() {
   // Normalize a party or a legacy saved Contact into one shape for the form.
   type Info = { company: string; name: string; email: string; phone: string };
   const fromParty = (p: TransactionParty | null): Info | null =>
-    p ? { company: p.company, name: p.name, email: p.email, phone: p.phone } : null;
+    p
+      ? {
+          company: p.company,
+          name: p.name,
+          email: canonicalContactEmail(p.name, p.email, p.company),
+          phone: p.phone,
+        }
+      : null;
   const fromContact = (c: Contact | null): Info | null =>
-    c ? { company: c.company_name, name: c.contact_name, email: c.email ?? "", phone: c.phone ?? "" } : null;
+    c
+      ? {
+          company: c.company_name,
+          name: c.contact_name,
+          email: canonicalContactEmail(c.contact_name, c.email, c.company_name),
+          phone: c.phone ?? "",
+        }
+      : null;
 
   // Parties roster wins; fall back to legacy contact-id selections.
   const lender        = fromParty(lenderP)      ?? fromContact(contacts.find((c) => c.id === meta?.lender_contact_id) ?? null);

@@ -14,6 +14,7 @@ import {
   daysUntilClosing,
 } from "@/lib/format";
 import { teamSteadyEmailFor } from "@/lib/agents";
+import { normalizeParties } from "@/lib/canonical-contacts";
 import { partiesToWorksheet } from "@/lib/parties-worksheet";
 import { buildInitialParties } from "@/lib/transaction-seed";
 import { getInspectionProgress } from "@/lib/inspection-progress";
@@ -693,9 +694,13 @@ export function ExtractionDetail({
       setPhotoUrl((m?.worksheet?.propertyPhotoUrl as string | undefined) ?? null);
 
       if (m?.parties && Array.isArray(m.parties) && m.parties.length > 0) {
-        console.log(`[contacts] loaded ${m.parties.length} saved contacts from Supabase`);
-        partiesRef.current = m.parties;
-        setParties(m.parties);
+        const loaded = normalizeParties(m.parties);
+        console.log(`[contacts] loaded ${loaded.length} saved contacts from Supabase`);
+        partiesRef.current = loaded;
+        setParties(loaded);
+        if (loaded.some((p, i) => p.email !== m.parties![i].email)) {
+          void patchMeta({ parties: loaded, worksheet: partiesToWorksheet(loaded) });
+        }
       } else {
         const seeded = buildInitialParties(data, contactsList);
         console.log(`[contacts] no saved roster — seeding ${seeded.length} from extraction`);

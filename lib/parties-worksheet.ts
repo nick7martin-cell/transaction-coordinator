@@ -1,4 +1,9 @@
+import { canonicalContactEmail } from "@/lib/canonical-contacts";
 import type { TransactionParty } from "@/lib/types";
+
+function partyEmail(party: TransactionParty): string {
+  return canonicalContactEmail(party.name, party.email, party.company);
+}
 
 /** Map the parties roster onto closing-worksheet override keys. */
 export function partiesToWorksheet(parties: TransactionParty[]): Record<string, string> {
@@ -57,7 +62,7 @@ export function partiesToWorksheet(parties: TransactionParty[]): Record<string, 
   if (bt) {
     ws.buyerTitleCo = bt.company;
     ws.buyerCloser = bt.name;
-    ws.buyerCloserEmail = bt.email;
+    ws.buyerCloserEmail = partyEmail(bt);
     ws.buyerCloserPh = bt.phone;
   }
 
@@ -65,7 +70,7 @@ export function partiesToWorksheet(parties: TransactionParty[]): Record<string, 
   if (st) {
     ws.sellerTitleCo = st.company;
     ws.sellerCloser = st.name;
-    ws.sellerCloserEmail = st.email;
+    ws.sellerCloserEmail = partyEmail(st);
     ws.sellerCloserPh = st.phone;
   }
 

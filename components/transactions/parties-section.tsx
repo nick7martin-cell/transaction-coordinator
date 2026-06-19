@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Building2, Mail, Phone, Plus, Trash2, UserPlus } from "lucide-react";
 import { getAvatarColor, getInitials } from "@/lib/property-image";
+import { canonicalContactEmail } from "@/lib/canonical-contacts";
 import {
   PARTY_ROLE_OPTIONS,
   type Contact,
@@ -12,6 +13,16 @@ import {
 import { cn } from "@/lib/utils";
 
 type NewParty = Omit<TransactionParty, "id">;
+
+function partyFromContact(c: Contact, role: PartyRole): NewParty {
+  return {
+    name: c.contact_name,
+    role,
+    company: c.company_name,
+    email: canonicalContactEmail(c.contact_name, c.email, c.company_name),
+    phone: c.phone ?? "",
+  };
+}
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
@@ -387,13 +398,7 @@ function SavedPicker({
 
   function add() {
     if (!chosen) return;
-    onPick({
-      name: chosen.contact_name,
-      role: defaultRoleForContact(chosen),
-      company: chosen.company_name,
-      email: chosen.email ?? "",
-      phone: chosen.phone ?? "",
-    });
+    onPick(partyFromContact(chosen, defaultRoleForContact(chosen)));
   }
 
   if (contacts.length === 0) {
@@ -423,7 +428,9 @@ function SavedPicker({
       {chosen && (
         <div className="rounded-lg bg-canvas border border-line px-3 py-2 text-xs text-ink-soft space-y-0.5">
           <p className="font-medium text-ink">{chosen.contact_name} · {chosen.company_name}</p>
-          {chosen.email && <p>{chosen.email}</p>}
+          {chosen.email && (
+            <p>{canonicalContactEmail(chosen.contact_name, chosen.email, chosen.company_name)}</p>
+          )}
           {chosen.phone && <p>{chosen.phone}</p>}
           <p className="text-ink-mute">
             Adds as {chosen.type === "lender" ? "Lender" : "Buyer's Title Company"} — change the role after adding if needed.
@@ -513,13 +520,7 @@ function AddContactControls({
   const titles = contacts.filter((c) => c.type === "title");
 
   function quickAdd(c: Contact, role: PartyRole) {
-    onAddParty({
-      name: c.contact_name,
-      role,
-      company: c.company_name,
-      email: c.email ?? "",
-      phone: c.phone ?? "",
-    });
+    onAddParty(partyFromContact(c, role));
   }
 
   return (

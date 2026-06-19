@@ -1,3 +1,4 @@
+import { canonicalContactEmail } from "@/lib/canonical-contacts";
 import { findAgentIdByName } from "@/lib/agents";
 import type { Contact, ExtractedData, TransactionParty } from "@/lib/types";
 import { makeParty, seedPartiesFromExtraction } from "@/lib/types";
@@ -51,7 +52,11 @@ export function contactToParty(
     name: contact.contact_name,
     role,
     company: contact.company_name,
-    email: contact.email ?? "",
+    email: canonicalContactEmail(
+      contact.contact_name,
+      contact.email,
+      contact.company_name
+    ),
     phone: contact.phone ?? "",
   });
 }
