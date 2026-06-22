@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PropertyImage } from "@/components/ui/property-image";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -13,10 +13,11 @@ import {
   parseCurrencyInput,
   daysUntilClosing,
 } from "@/lib/format";
-import { teamSteadyEmailFor } from "@/lib/agents";
+import { findAgentIdByName, teamSteadyEmailFor } from "@/lib/agents";
+import { resolveIntroEmAgentId } from "@/lib/gmail/intro-em-draft";
 import { normalizeParties } from "@/lib/canonical-contacts";
 import { partiesToWorksheet } from "@/lib/parties-worksheet";
-import { buildInitialParties } from "@/lib/transaction-seed";
+import { buildInitialParties, resolveTeamSteadySide } from "@/lib/transaction-seed";
 import { getInspectionProgress } from "@/lib/inspection-progress";
 import { resolveStatus } from "@/lib/transaction-lifecycle";
 import { getTransactionStatus } from "@/lib/transaction-status";
@@ -593,6 +594,11 @@ export function ExtractionDetail({
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [draftingIntroEm, setDraftingIntroEm] = useState(false);
+  const [introEmFeedback, setIntroEmFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const [markingReviewed, setMarkingReviewed] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -731,6 +737,17 @@ export function ExtractionDetail({
       .catch(() => setGmailConnected(false));
   }, []);
 
+  const showIntroEmDraft = useMemo(() => {
+    if (resolveTeamSteadySide(data) !== "buyer") return false;
+    const buyerAgent =
+      parties.find((p) => p.role === "buyer_agent") ??
+      parties.find(
+        (p) => p.role === "agent_unconfirmed" && !!findAgentIdByName(p.name)
+      );
+    const agentName = buyerAgent?.name ?? data.buyerAgentName;
+    return resolveIntroEmAgentId(agentName) !== null;
+  }, [data, parties]);
+
   async function handleDraftConnectionEmail() {
     setDraftingEmail(true);
     setDraftEmailFeedback(null);
@@ -753,6 +770,31 @@ export function ExtractionDetail({
       });
     } finally {
       setDraftingEmail(false);
+    }
+  }
+
+  async function handleDraftIntroEmEmail() {
+    setDraftingIntroEm(true);
+    setIntroEmFeedback(null);
+    try {
+      const res = await fetch(`/api/transactions/${transaction.id}/draft-intro-em`, {
+        method: "POST",
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload.error || "Failed to create draft");
+      }
+      setIntroEmFeedback({
+        type: "success",
+        message: "Intro / EM draft created — check Gmail",
+      });
+    } catch (err) {
+      setIntroEmFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to create draft",
+      });
+    } finally {
+      setDraftingIntroEm(false);
     }
   }
 
@@ -1073,6 +1115,21 @@ export function ExtractionDetail({
                   <ClipboardList className="h-4 w-4" />
                   Generate Closing Worksheet
                 </button>
+                {gmailConnected && showIntroEmDraft && (
+                  <button
+                    type="button"
+                    disabled={draftingIntroEm}
+                    onClick={() => void handleDraftIntroEmEmail()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-line bg-canvas px-5 h-11 text-sm font-semibold text-ink-soft shadow-card hover:text-ink hover:border-ink-mute/40 transition-colors disabled:opacity-50"
+                  >
+                    {draftingIntroEm ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Mail className="h-4 w-4" />
+                    )}
+                    Draft Intro/EM Email
+                  </button>
+                )}
                 {gmailConnected && (
                   <button
                     type="button"
@@ -1089,6 +1146,18 @@ export function ExtractionDetail({
                   </button>
                 )}
               </div>
+              {introEmFeedback && (
+                <div
+                  className={cn(
+                    "rounded-xl border px-4 py-2.5 text-sm",
+                    introEmFeedback.type === "success"
+                      ? "border-good bg-good/30 text-good-ink"
+                      : "border-danger bg-danger/40 text-danger-ink"
+                  )}
+                >
+                  {introEmFeedback.message}
+                </div>
+              )}
               {draftEmailFeedback && (
                 <div
                   className={cn(
