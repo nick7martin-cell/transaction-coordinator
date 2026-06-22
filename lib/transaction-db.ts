@@ -46,7 +46,7 @@ function mapExtractedToTransactionFields(
     financing_percentage: e.financingPercentage,
     contingencies: e.contingencies,
     /** Links this transaction to its source extraction / PA document (same UUID). */
-    source_documents: [id],
+    source_documents: id ? [id] : undefined,
     conflicts_noted: e.errors.length > 0 ? e.errors : undefined,
   };
 }
