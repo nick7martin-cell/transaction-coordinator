@@ -1,6 +1,10 @@
-import { extractPdf } from "@/lib/extract-pdf";
+import {
+  extractFromDocuments,
+  extractSupplementalContacts,
+} from "@/lib/extract-pdf";
 import { mergeExtractedData } from "@/lib/extraction-merge";
 import { mergeWorksheetFromParties } from "@/lib/parties-worksheet";
+import { mergePartiesFromExtraction } from "@/lib/party-merge";
 import { supabase } from "@/lib/supabase";
 import { buildTransactionUpdate } from "@/lib/transaction-db";
 import {
@@ -10,8 +14,14 @@ import {
 import { mergeConcessionsIntoWorksheet } from "@/lib/worksheet-defaults";
 import { preserveLifecycleInExtracted } from "@/lib/transaction-lifecycle";
 import {
+  countPdfFiles,
+  filesToExtractionDocuments,
+  isAllowedUploadFile,
+  isImageFile,
+  isPdfFile,
+} from "@/lib/upload-files";
+import {
   coerceExtractedData,
-  mergePartiesFromExtraction,
   type Contact,
   type Transaction,
   type TransactionParty,
@@ -24,38 +34,97 @@ export async function POST(
   try {
     const { id } = await params;
     const formData = await req.formData();
-    const pdfFile = formData.get("pdf") as File;
+    const notesRaw = formData.get("notes");
+    const notes =
+      typeof notesRaw === "string" && notesRaw.trim() ? notesRaw.trim() : null;
 
-    if (!pdfFile) {
-      return Response.json({ error: "No PDF provided" }, { status: 400 });
-    }
-    if (!pdfFile.name.toLowerCase().endsWith(".pdf")) {
-      return Response.json({ error: "Please upload a PDF file" }, { status: 400 });
+    const uploaded = [
+      ...formData.getAll("files"),
+      ...(formData.has("pdf") ? [formData.get("pdf")] : []),
+    ].filter((f): f is File => f instanceof File && f.size > 0);
+
+    const invalid = uploaded.filter((f) => !isAllowedUploadFile(f));
+    if (invalid.length > 0) {
+      return Response.json(
+        {
+          error:
+            "Unsupported file type. Upload a PDF and/or JPEG, PNG, GIF, or WebP images.",
+        },
+        { status: 400 }
+      );
     }
 
-    const [{ data: existing, error: fetchError }, { data: metaRow }] = await Promise.all([
-      supabase.from("extractions").select("*").eq("id", id).single(),
-      supabase.from("transaction_meta").select("worksheet, commission").eq("transaction_id", id).maybeSingle(),
-    ]);
+    const pdfCount = countPdfFiles(uploaded);
+    if (pdfCount > 1) {
+      return Response.json(
+        { error: "Please upload only one PDF purchase agreement." },
+        { status: 400 }
+      );
+    }
+
+    const hasPdf = pdfCount === 1;
+    const hasImages = uploaded.some(isImageFile);
+    if (!hasPdf && !hasImages && !notes) {
+      return Response.json(
+        {
+          error:
+            "Provide a revised PDF, email screenshots, and/or notes with contact information.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const [{ data: existing, error: fetchError }, { data: metaRow }] =
+      await Promise.all([
+        supabase.from("extractions").select("*").eq("id", id).single(),
+        supabase
+          .from("transaction_meta")
+          .select("worksheet, commission")
+          .eq("transaction_id", id)
+          .maybeSingle(),
+      ]);
 
     if (fetchError || !existing) {
       return Response.json({ error: "Transaction not found" }, { status: 404 });
     }
 
     const current = coerceExtractedData(existing.extracted_data);
-    const incoming = await extractPdf(await pdfFile.arrayBuffer(), existing.document_type);
-    const { merged, filled } = mergeExtractedData(current, incoming);
-
     const existingWs = (metaRow?.worksheet ?? {}) as Record<string, unknown>;
     const wsParties = existingWs._parties;
     const existingParties: TransactionParty[] = Array.isArray(wsParties)
       ? (wsParties as TransactionParty[])
       : [];
 
-    const { parties: mergedParties, added: partiesAdded } = mergePartiesFromExtraction(
-      existingParties,
-      merged
-    );
+    let incoming;
+    if (hasPdf) {
+      const documents = await filesToExtractionDocuments(
+        uploaded.sort((a, b) => {
+          if (isPdfFile(a) && !isPdfFile(b)) return -1;
+          if (!isPdfFile(a) && isPdfFile(b)) return 1;
+          return 0;
+        })
+      );
+      incoming = await extractFromDocuments(
+        documents,
+        existing.document_type,
+        notes
+      );
+    } else {
+      const images = uploaded.filter(isImageFile);
+      const documents = await filesToExtractionDocuments(images);
+      incoming = await extractSupplementalContacts(documents, notes, {
+        propertyAddress: current.propertyAddress,
+        existingParties,
+      });
+    }
+
+    const { merged, filled } = mergeExtractedData(current, incoming);
+
+    const {
+      parties: mergedParties,
+      added: partiesAdded,
+      updated: partiesUpdated,
+    } = mergePartiesFromExtraction(existingParties, merged);
 
     const { data: contacts } = await supabase
       .from("contacts")
@@ -84,10 +153,11 @@ export async function POST(
       existing.extracted_data
     );
 
+    const pdfFile = uploaded.find(isPdfFile);
     const { data: updated, error: updateError } = await supabase
       .from("extractions")
       .update({
-        file_name: pdfFile.name,
+        ...(pdfFile ? { file_name: pdfFile.name } : {}),
         extracted_data: extractedPayload,
         flagged_for_review: merged.flaggedForReview,
         confidence: merged.confidence,
@@ -104,7 +174,7 @@ export async function POST(
       .from("transactions")
       .update(
         buildTransactionUpdate({
-          fileName: pdfFile.name,
+          ...(pdfFile ? { fileName: pdfFile.name } : {}),
           extracted: merged,
         })
       )
@@ -134,7 +204,9 @@ export async function POST(
       parties: nextParties,
       filled,
       partiesAdded: allPartiesAdded,
-      filledCount: filled.length + allPartiesAdded.length,
+      partiesUpdated,
+      filledCount:
+        filled.length + allPartiesAdded.length + partiesUpdated.length,
     });
   } catch (error) {
     return Response.json(

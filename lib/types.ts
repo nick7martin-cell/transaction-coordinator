@@ -38,7 +38,16 @@ export interface ExtractedData {
   /** True when the same brokerage / licensee represents both sides. */
   dualAgency: boolean;
   contingencies: string[];
+  /** @deprecated Prefer buyerTitleCompany — kept for legacy extractions. */
   titleCompany: string | null;
+  buyerTitleCompany: string | null;
+  buyerTitleCloserName: string | null;
+  buyerTitleCloserEmail: string | null;
+  buyerTitleCloserPhone: string | null;
+  sellerTitleCompany: string | null;
+  sellerTitleCloserName: string | null;
+  sellerTitleCloserEmail: string | null;
+  sellerTitleCloserPhone: string | null;
   /** True when a pre-approval letter is included in the uploaded PDF. */
   hasPreApprovalLetter: boolean;
   /** Loan officer / lender contact from pre-approval letter (when detected). */
@@ -247,104 +256,7 @@ export function seedPartiesFromExtraction(d: ExtractedData): TransactionParty[] 
   return parties;
 }
 
-function normPartyName(name: string): string {
-  return name.trim().toLowerCase();
-}
-
-function partyListHasName(parties: TransactionParty[], name: string): boolean {
-  const n = normPartyName(name);
-  if (!n) return true;
-  return parties.some((p) => normPartyName(p.name) === n);
-}
-
-/**
- * Add buyers, sellers, and agents from extracted data to an existing parties
- * roster. Skips any contact whose name already appears on the list.
- */
-export function mergePartiesFromExtraction(
-  existing: TransactionParty[],
-  d: ExtractedData
-): { parties: TransactionParty[]; added: { label: string; name: string }[] } {
-  const parties = [...existing];
-  const added: { label: string; name: string }[] = [];
-  const dual = detectDualAgency(d);
-  const norm = normPartyName;
-
-  d.buyerNames.forEach((name, i) => {
-    const trimmed = name?.trim();
-    if (!trimmed || partyListHasName(parties, trimmed)) return;
-    parties.push(
-      makeParty({
-        name: trimmed,
-        role: "buyer",
-        company: "",
-        email: d.buyerEmails[i] ?? "",
-        phone: d.buyerPhones[i] ?? "",
-      })
-    );
-    added.push({ label: "Buyer", name: trimmed });
-  });
-
-  d.sellerNames.forEach((name, i) => {
-    const trimmed = name?.trim();
-    if (!trimmed || partyListHasName(parties, trimmed)) return;
-    parties.push(
-      makeParty({
-        name: trimmed,
-        role: "seller",
-        company: "",
-        email: d.sellerEmails[i] ?? "",
-        phone: d.sellerPhones[i] ?? "",
-      })
-    );
-    added.push({ label: "Seller", name: trimmed });
-  });
-
-  const sameAgent =
-    !!d.buyerAgentName &&
-    !!d.listingAgentName &&
-    norm(d.buyerAgentName) === norm(d.listingAgentName);
-
-  if (d.buyerAgentName?.trim() && !partyListHasName(parties, d.buyerAgentName)) {
-    const trimmed = d.buyerAgentName.trim();
-    parties.push(
-      makeParty({
-        name: trimmed,
-        role: dual ? "agent_unconfirmed" : "buyer_agent",
-        company: d.buyerAgentBrokerage ?? "",
-        email: d.buyerAgentEmail ?? "",
-        phone: d.buyerAgentPhone ?? "",
-      })
-    );
-    added.push({
-      label: dual ? "Agent (needs confirmation)" : "Buyer's Agent",
-      name: trimmed,
-    });
-  }
-
-  if (
-    d.listingAgentName?.trim() &&
-    !sameAgent &&
-    !partyListHasName(parties, d.listingAgentName)
-  ) {
-    const trimmed = d.listingAgentName.trim();
-    parties.push(
-      makeParty({
-        name: trimmed,
-        role: dual ? "agent_unconfirmed" : "listing_agent",
-        company: d.listingAgentBrokerage ?? "",
-        email: d.listingAgentEmail ?? "",
-        phone: d.listingAgentPhone ?? "",
-      })
-    );
-    added.push({
-      label: dual ? "Agent (needs confirmation)" : "Listing Agent",
-      name: trimmed,
-    });
-  }
-
-  return { parties, added };
-}
+export { mergePartiesFromExtraction } from "@/lib/party-merge";
 
 // ── Coercion ──────────────────────────────────────────────────────────────────
 // Handles both camelCase (current) and snake_case (legacy) field names so that
@@ -401,6 +313,16 @@ export function coerceExtractedData(
     dualAgency:                           Boolean(r.dualAgency ?? r.dual_agency),
     contingencies:                        arr("contingencies"),
     titleCompany:                         str("titleCompany", "title_company"),
+    buyerTitleCompany:
+      str("buyerTitleCompany", "buyer_title_company") ??
+      str("titleCompany", "title_company"),
+    buyerTitleCloserName:                 str("buyerTitleCloserName", "buyer_title_closer_name"),
+    buyerTitleCloserEmail:                str("buyerTitleCloserEmail", "buyer_title_closer_email"),
+    buyerTitleCloserPhone:                str("buyerTitleCloserPhone", "buyer_title_closer_phone"),
+    sellerTitleCompany:                   str("sellerTitleCompany", "seller_title_company"),
+    sellerTitleCloserName:                str("sellerTitleCloserName", "seller_title_closer_name"),
+    sellerTitleCloserEmail:               str("sellerTitleCloserEmail", "seller_title_closer_email"),
+    sellerTitleCloserPhone:               str("sellerTitleCloserPhone", "seller_title_closer_phone"),
     hasPreApprovalLetter:                 Boolean(r.hasPreApprovalLetter ?? r.has_pre_approval_letter),
     lenderName:                           str("lenderName", "lender_name"),
     lenderCompany:                        str("lenderCompany", "lender_company"),

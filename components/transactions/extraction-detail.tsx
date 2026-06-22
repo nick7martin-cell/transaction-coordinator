@@ -31,15 +31,18 @@ import {
   type TransactionParty,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { isAllowedUploadFile, isImageFile } from "@/lib/upload-files";
 import {
   Camera,
   CheckCircle,
   ClipboardList,
   Clock,
   FileUp,
+  Image as ImageIcon,
   Loader2,
   Mail,
   Pencil,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -580,7 +583,10 @@ export function ExtractionDetail({
   const [reExtractSummary, setReExtractSummary] = useState<{
     filled: { field: string; label: string; value: string }[];
     partiesAdded: { label: string; name: string }[];
+    partiesUpdated: { label: string; name: string; detail?: string }[];
   } | null>(null);
+  const [supplementalNotes, setSupplementalNotes] = useState("");
+  const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
   const [gmailConnected, setGmailConnected] = useState(false);
   const [draftingEmail, setDraftingEmail] = useState(false);
   const [draftEmailFeedback, setDraftEmailFeedback] = useState<{
@@ -594,6 +600,7 @@ export function ExtractionDetail({
   const [savingClosingDate, setSavingClosingDate] = useState(false);
   const [savingPurchasePrice, setSavingPurchasePrice] = useState(false);
   const paInputRef = useRef<HTMLInputElement>(null);
+  const supplementalInputRef = useRef<HTMLInputElement>(null);
   const seededRef = useRef(false);
 
   // Always-current snapshot of the roster so mutation handlers never read a
@@ -790,21 +797,10 @@ export function ExtractionDetail({
     }
   }
 
-  async function handleReExtract(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setReExtractError("Please upload a PDF file.");
-      return;
-    }
-
+  async function runContactExtraction(formData: FormData) {
     setReExtracting(true);
     setReExtractError(null);
     setReExtractSummary(null);
-
-    const formData = new FormData();
-    formData.append("pdf", file);
 
     try {
       const res = await fetch(`/api/transactions/${transaction.id}/re-extract`, {
@@ -813,7 +809,7 @@ export function ExtractionDetail({
       });
       const d = await res.json();
       if (!res.ok) {
-        setReExtractError(d.error || "Re-extraction failed");
+        setReExtractError(d.error || "Extraction failed");
         return;
       }
       onTransactionChange?.(d.transaction);
@@ -824,12 +820,69 @@ export function ExtractionDetail({
       setReExtractSummary({
         filled: d.filled ?? [],
         partiesAdded: d.partiesAdded ?? [],
+        partiesUpdated: d.partiesUpdated ?? [],
       });
     } catch {
-      setReExtractError("Re-extraction failed");
+      setReExtractError("Extraction failed");
     } finally {
       setReExtracting(false);
     }
+  }
+
+  async function handleReExtract(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      setReExtractError("Please upload a PDF file.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("pdf", file);
+    await runContactExtraction(formData);
+  }
+
+  async function handleSupplementalExtract() {
+    if (supplementalFiles.length === 0 && !supplementalNotes.trim()) {
+      setReExtractError("Add email screenshots and/or paste contact notes first.");
+      return;
+    }
+
+    const formData = new FormData();
+    for (const file of supplementalFiles) {
+      formData.append("files", file);
+    }
+    if (supplementalNotes.trim()) {
+      formData.append("notes", supplementalNotes.trim());
+    }
+    await runContactExtraction(formData);
+    setSupplementalFiles([]);
+  }
+
+  function handleSupplementalFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (picked.length === 0) return;
+
+    const invalid = picked.filter((f) => !isAllowedUploadFile(f) || !isImageFile(f));
+    if (invalid.length > 0) {
+      setReExtractError("Use JPEG, PNG, GIF, or WebP screenshots only.");
+      return;
+    }
+
+    setReExtractError(null);
+    setSupplementalFiles((prev) => {
+      const seen = new Set(prev.map((f) => `${f.name}-${f.size}`));
+      const merged = [...prev];
+      for (const file of picked) {
+        const key = `${file.name}-${file.size}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(file);
+      }
+      return merged;
+    });
   }
 
   // Parties handlers — all build off partiesRef.current (the latest snapshot).
@@ -1272,8 +1325,9 @@ export function ExtractionDetail({
       <div className="rounded-[20px] bg-surface border border-line shadow-card p-6">
         <h2 className="text-[15px] font-semibold text-ink mb-1">Transaction actions</h2>
         <p className="text-sm text-ink-soft mb-5">
-          Update status, upload a revised purchase agreement to fill in missing fields, or
-          permanently remove this transaction.
+          Update status, upload a revised purchase agreement, or add email
+          screenshots and contact notes to automatically fill in Transaction
+          Contacts.
         </p>
 
         <div className="flex flex-wrap items-center gap-3 mb-5 pb-5 border-b border-line">
@@ -1342,7 +1396,9 @@ export function ExtractionDetail({
             </p>
             {(() => {
               const total =
-                reExtractSummary.filled.length + reExtractSummary.partiesAdded.length;
+                reExtractSummary.filled.length +
+                reExtractSummary.partiesAdded.length +
+                reExtractSummary.partiesUpdated.length;
               if (total === 0) {
                 return (
                   <p className="mt-1 text-sm text-good-ink/90">
@@ -1362,6 +1418,19 @@ export function ExtractionDetail({
                   <li key={f.field} className="text-sm text-good-ink/90">
                     <span className="font-medium">{f.label}:</span>{" "}
                     <span className="text-good-ink/80">{f.value}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {reExtractSummary.partiesUpdated.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {reExtractSummary.partiesUpdated.map((p) => (
+                  <li key={`${p.label}-${p.name}-updated`} className="text-sm text-good-ink/90">
+                    <span className="font-medium">{p.label} updated:</span>{" "}
+                    <span className="text-good-ink/80">{p.name}</span>
+                    {p.detail ? (
+                      <span className="text-good-ink/70"> ({p.detail})</span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -1391,6 +1460,82 @@ export function ExtractionDetail({
             {reExtractError}
           </div>
         )}
+
+        <div className="mb-5 rounded-xl border border-line bg-canvas p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">Add contacts from notes or emails</h3>
+            <p className="mt-1 text-xs text-ink-mute">
+              Paste contact details or upload email screenshots — extracted info
+              fills blank fields in Transaction Contacts without overwriting what
+              you already entered.
+            </p>
+          </div>
+          <textarea
+            value={supplementalNotes}
+            onChange={(e) => setSupplementalNotes(e.target.value)}
+            disabled={reExtracting}
+            rows={3}
+            placeholder="Paste listing agent email/phone, seller's title closer, lender info, buyer emails…"
+            className="w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-ink-mute focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/40 disabled:opacity-60 resize-y min-h-[72px]"
+          />
+          {supplementalFiles.length > 0 && (
+            <ul className="space-y-1.5">
+              {supplementalFiles.map((file, index) => (
+                <li
+                  key={`${file.name}-${file.size}`}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm"
+                >
+                  <span className="inline-flex items-center gap-2 text-ink-soft truncate">
+                    <ImageIcon className="h-4 w-4 shrink-0 text-ink-mute" />
+                    {file.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSupplementalFiles((prev) => prev.filter((_, i) => i !== index))
+                    }
+                    className="rounded-lg p-1 text-ink-mute hover:text-ink hover:bg-line/60 transition-colors"
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              ref={supplementalInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              multiple
+              className="hidden"
+              onChange={handleSupplementalFiles}
+            />
+            <button
+              type="button"
+              disabled={reExtracting}
+              onClick={() => supplementalInputRef.current?.click()}
+              className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-4 h-10 text-sm font-semibold text-ink-soft hover:text-ink hover:border-ink-mute/40 transition-colors disabled:opacity-50"
+            >
+              <ImageIcon className="h-4 w-4" />
+              Add screenshots
+            </button>
+            <button
+              type="button"
+              disabled={reExtracting}
+              onClick={() => void handleSupplementalExtract()}
+              className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 h-10 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:opacity-50"
+            >
+              {reExtracting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              Extract contact info
+            </button>
+          </div>
+        </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <input

@@ -10,6 +10,7 @@ import {
   isPdfFile,
   primaryFileName,
 } from "@/lib/upload-files";
+import { mergePartiesFromExtraction } from "@/lib/party-merge";
 import { applyWorksheetDefaults, concessionsWorksheetFields } from "@/lib/worksheet-defaults";
 import type { Contact } from "@/lib/types";
 
@@ -105,7 +106,10 @@ export async function POST(req: Request) {
       .order("type")
       .order("company_name");
 
-    const parties = buildInitialParties(result, (contacts ?? []) as Contact[]);
+    const parties = mergePartiesFromExtraction(
+      buildInitialParties(result, (contacts ?? []) as Contact[]),
+      result
+    ).parties;
     const worksheet = applyWorksheetDefaults({}, {
       ...partiesToWorksheet(parties),
       ...concessionsWorksheetFields(result),

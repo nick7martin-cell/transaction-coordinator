@@ -33,6 +33,14 @@ const FIELD_LABELS: Partial<Record<keyof ExtractedData, string>> = {
   dualAgency: "Dual agency flag",
   contingencies: "Contingencies",
   titleCompany: "Title company",
+  buyerTitleCompany: "Buyer's title company",
+  buyerTitleCloserName: "Buyer's title closer",
+  buyerTitleCloserEmail: "Buyer's title closer email",
+  buyerTitleCloserPhone: "Buyer's title closer phone",
+  sellerTitleCompany: "Seller's title company",
+  sellerTitleCloserName: "Seller's title closer",
+  sellerTitleCloserEmail: "Seller's title closer email",
+  sellerTitleCloserPhone: "Seller's title closer phone",
   hasPreApprovalLetter: "Pre-approval letter detected",
   lenderName: "Lender / loan officer",
   lenderCompany: "Lender company",
@@ -55,6 +63,19 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+function mergeStringArrays(prev: string[], next: string[]): string[] | null {
+  const len = Math.max(prev.length, next.length);
+  const out: string[] = [];
+  let changed = false;
+  for (let i = 0; i < len; i++) {
+    const p = (prev[i] ?? "").trim();
+    const n = (next[i] ?? "").trim();
+    if (!p && n) changed = true;
+    out.push(p || n);
+  }
+  return changed ? out : null;
+}
+
 /**
  * Fill only blank/null fields on `existing` from `incoming`.
  * Never overwrites populated values (including manually edited extraction fields).
@@ -71,7 +92,23 @@ export function mergeExtractedData(
 
     const prev = existing[key];
     const next = incoming[key];
-    if (!isBlank(prev) || isBlank(next)) continue;
+    if (isBlank(next)) continue;
+
+    if (Array.isArray(prev) && Array.isArray(next)) {
+      const mergedArr = mergeStringArrays(prev, next);
+      if (mergedArr) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (merged as any)[key] = mergedArr;
+        filled.push({
+          field: key,
+          label: FIELD_LABELS[key] ?? key,
+          value: formatValue(mergedArr),
+        });
+      }
+      continue;
+    }
+
+    if (!isBlank(prev)) continue;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (merged as any)[key] = next;

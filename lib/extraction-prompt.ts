@@ -15,8 +15,8 @@ export const EXTRACTION_JSON_SCHEMA = `{
   "mlsNumber": string or null,
   "pidNumber": string or null (property ID / parcel number),
   "buyerNames": array of strings (all buyers named on agreement),
-  "buyerEmails": array of strings (buyer email addresses if present),
-  "buyerPhones": array of strings (buyer phone numbers if present),
+  "buyerEmails": array of strings (buyer email addresses — from PA, emails, or notes; align index with buyerNames),
+  "buyerPhones": array of strings (buyer phone numbers — from PA, emails, or notes; align index with buyerNames),
   "buyerAgentName": string or null,
   "buyerAgentBrokerage": string or null,
   "buyerAgentEmail": string or null,
@@ -30,19 +30,40 @@ export const EXTRACTION_JSON_SCHEMA = `{
   "listingAgentPhone": string or null,
   "dualAgency": boolean (true if the same brokerage OR the same licensee represents both the buyer and the seller),
   "contingencies": array of strings listing each contingency mentioned,
-  "titleCompany": string or null,
-  "hasPreApprovalLetter": boolean (true if a mortgage pre-approval letter is included in this PDF, separate from or attached to the purchase agreement),
-  "lenderName": string or null (loan officer name from pre-approval letter — only when hasPreApprovalLetter is true),
-  "lenderCompany": string or null (lender / mortgage company name from pre-approval letter),
-  "lenderEmail": string or null (loan officer email from pre-approval letter),
-  "lenderPhone": string or null (loan officer phone from pre-approval letter),
+  "titleCompany": string or null (legacy — also populate buyerTitleCompany when this is the buyer-side title company),
+  "buyerTitleCompany": string or null (buyer-side title company name),
+  "buyerTitleCloserName": string or null (buyer-side title closer / escrow officer name),
+  "buyerTitleCloserEmail": string or null,
+  "buyerTitleCloserPhone": string or null,
+  "sellerTitleCompany": string or null (seller-side / other-side title company name),
+  "sellerTitleCloserName": string or null (seller-side title closer name),
+  "sellerTitleCloserEmail": string or null,
+  "sellerTitleCloserPhone": string or null,
+  "hasPreApprovalLetter": boolean (true if a mortgage pre-approval letter is included in the uploaded PDF documents),
+  "lenderName": string or null (loan officer name),
+  "lenderCompany": string or null (lender / mortgage company name),
+  "lenderEmail": string or null (loan officer email),
+  "lenderPhone": string or null (loan officer phone),
   "confidence": number between 0 and 1,
   "flaggedForReview": boolean,
   "errors": array of strings
 }`;
 
+const SUPPLEMENTAL_CONTACT_RULES = `
+SUPPLEMENTAL SOURCES — CRITICAL:
+- Coordinator notes and screenshot images (email threads, signature blocks, business cards, intro emails, contact lists) are first-class sources for party contact information.
+- Extract EVERY email address, phone number, company name, and person name you can reliably match to a transaction role — even when that information is NOT on the purchase agreement.
+- Email screenshots often contain the other-side listing agent, seller's title closer, lender/loan officer, buyers, or sellers. Parse To/From/Cc lines, signatures, and body text.
+- Coordinator notes may paste contact info directly (e.g. "Listing agent: Jane Smith jane@broker.com 612-555-0100") — extract all of it.
+- When the same person appears in multiple sources, prefer the most complete contact record.
+- buyerEmails/buyerPhones and sellerEmails/sellerPhones arrays must align by index with buyerNames/sellerNames when possible.
+- Title closer fields: populate buyer-side title in buyerTitle* fields and seller-side / other-side title in sellerTitle* fields.
+- Lender fields: extract from pre-approval letters when present AND from email screenshots or notes when they identify the loan officer for this transaction. Set hasPreApprovalLetter true only when a pre-approval/ pre-qualification letter document is actually included — not from a casual email mention alone.
+- Listing agent / buyer agent emails and phones often appear ONLY in supplemental emails — always check screenshots and notes for them.
+`;
+
 export function buildExtractionPrompt(documentType: string): string {
-  return `Extract all contract terms from this ${documentType} for a real estate transaction coordinator.
+  return `Extract all contract terms and transaction party contact information from this ${documentType} for a real estate transaction coordinator.
 
 RULES:
 - Return ONLY valid JSON, no other text, no markdown, no code blocks
@@ -55,12 +76,52 @@ RULES:
 - pidNumber: look for Property ID, PID, Parcel ID, or Tax ID number
 - contingencies: list each distinct contingency (financing, inspection, appraisal, sale of buyer property, etc.)
 - dualAgency: set true when the listing brokerage and the buyer's brokerage are the same company, or when a single licensee represents both sides. When dualAgency is true, DO NOT guess which named agent is the buyer's agent versus the listing agent — extract whatever names/brokerages appear, but the coordinator will confirm the roles manually. Do not invent a distinction that isn't clearly stated.
-- hasPreApprovalLetter: set true only when a mortgage pre-approval letter (or loan pre-qualification letter) is present in this PDF — it may be a separate page appended to the purchase agreement. Do not set true for financing type mentions on the PA alone.
-- lenderName, lenderCompany, lenderEmail, lenderPhone: extract ONLY from the pre-approval letter section when hasPreApprovalLetter is true; otherwise use null for all four
 - confidence: your overall confidence in the extraction accuracy (0-1)
 - If confidence < 0.85, set flaggedForReview to true
 - List any ambiguities or missing critical data in errors array
+${SUPPLEMENTAL_CONTACT_RULES}
 
 Return this exact JSON shape:
 ${EXTRACTION_JSON_SCHEMA}`;
+}
+
+/** Prompt when extracting contact info only from notes/screenshots (no PA PDF). */
+export function buildSupplementalExtractionPrompt(context: {
+  propertyAddress: string | null;
+  knownParties: string;
+}): string {
+  return `Extract transaction party contact information for a real estate transaction coordinator.
+
+This upload contains ONLY supplemental material (coordinator notes and/or email screenshots) — not a purchase agreement. Focus entirely on finding contact details for everyone involved in the transaction.
+
+Known context for this transaction:
+- Property: ${context.propertyAddress ?? "unknown"}
+- Existing contacts already on file:
+${context.knownParties || "  (none yet)"}
+
+RULES:
+- Return ONLY valid JSON, no other text, no markdown, no code blocks
+- Leave contract fields (purchasePrice, closingDate, earnestMoney, etc.) as null unless explicitly stated in the supplemental material
+- Extract all party contact info you can identify: buyers, sellers, buyer agent, listing agent, lender/loan officer, buyer-side title, seller-side title
+- Parse email headers (From/To/Cc), signature blocks, and pasted contact lists carefully
+- buyerEmails/buyerPhones and sellerEmails/sellerPhones arrays must align by index with buyerNames/sellerNames when possible
+- Set confidence based on how clearly the supplemental material identifies each contact
+- If confidence < 0.85, set flaggedForReview to true
+${SUPPLEMENTAL_CONTACT_RULES}
+
+Return this exact JSON shape:
+${EXTRACTION_JSON_SCHEMA}`;
+}
+
+export function summarizePartiesForPrompt(
+  parties: Array<{ role: string; name: string; company: string; email: string }>
+): string {
+  if (parties.length === 0) return "";
+  return parties
+    .map((p) => {
+      const parts = [p.role, p.name || "(no name)", p.company].filter(Boolean);
+      const contact = [p.email].filter(Boolean).join(", ");
+      return `  - ${parts.join(" · ")}${contact ? ` · ${contact}` : ""}`;
+    })
+    .join("\n");
 }

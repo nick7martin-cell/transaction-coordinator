@@ -1,10 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { buildExtractionPrompt } from "@/lib/extraction-prompt";
-import type { ExtractedData } from "@/lib/types";
+import {
+  buildExtractionPrompt,
+  buildSupplementalExtractionPrompt,
+  summarizePartiesForPrompt,
+} from "@/lib/extraction-prompt";
+import type { ExtractedData, TransactionParty } from "@/lib/types";
 
 const client = new Anthropic();
 
-export function normalizeExtraction(raw: Record<string, unknown>): ExtractedData {
+export function normalizeExtraction(
+  raw: Record<string, unknown>,
+  options?: { supplemental?: boolean }
+): ExtractedData {
   const errors = Array.isArray(raw.errors) ? raw.errors.map(String) : [];
 
   const result: ExtractedData = {
@@ -52,6 +59,15 @@ export function normalizeExtraction(raw: Record<string, unknown>): ExtractedData
     dualAgency: Boolean(raw.dualAgency),
     contingencies: Array.isArray(raw.contingencies) ? raw.contingencies.map(String) : [],
     titleCompany: (raw.titleCompany as string) ?? null,
+    buyerTitleCompany:
+      (raw.buyerTitleCompany as string) ?? (raw.titleCompany as string) ?? null,
+    buyerTitleCloserName: (raw.buyerTitleCloserName as string) ?? null,
+    buyerTitleCloserEmail: (raw.buyerTitleCloserEmail as string) ?? null,
+    buyerTitleCloserPhone: (raw.buyerTitleCloserPhone as string) ?? null,
+    sellerTitleCompany: (raw.sellerTitleCompany as string) ?? null,
+    sellerTitleCloserName: (raw.sellerTitleCloserName as string) ?? null,
+    sellerTitleCloserEmail: (raw.sellerTitleCloserEmail as string) ?? null,
+    sellerTitleCloserPhone: (raw.sellerTitleCloserPhone as string) ?? null,
     hasPreApprovalLetter: Boolean(raw.hasPreApprovalLetter),
     lenderName: (raw.lenderName as string) ?? null,
     lenderCompany: (raw.lenderCompany as string) ?? null,
@@ -63,7 +79,7 @@ export function normalizeExtraction(raw: Record<string, unknown>): ExtractedData
     errors,
   };
 
-  if (!result.propertyAddress || !result.purchasePrice) {
+  if (!options?.supplemental && (!result.propertyAddress || !result.purchasePrice)) {
     result.flaggedForReview = true;
     if (!errors.includes("Missing critical fields")) {
       result.errors.push("Missing critical fields");
@@ -131,11 +147,13 @@ function buildMessageContent(
     });
   }
 
-  if (hasSupplementalImages) {
+  if (hasSupplementalImages || trimmedNotes) {
     blocks.push({
       type: "text",
       text:
-        "Supplemental screenshot images are included above. Use them together with the purchase agreement when extracting contact details and transaction information.",
+        "Supplemental coordinator notes and/or screenshot images are included. " +
+        "Extract ALL party contact details from them — email addresses, phone numbers, " +
+        "title closers, lenders, and agents — even when that information is not on the purchase agreement.",
     });
   }
 
@@ -174,6 +192,71 @@ export async function extractFromDocuments(
   const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
   const parsed = JSON.parse(cleaned) as Record<string, unknown>;
   return normalizeExtraction(parsed);
+}
+
+/** Extract party contact info from notes/screenshots without a purchase agreement PDF. */
+export async function extractSupplementalContacts(
+  documents: ExtractionDocument[],
+  notes: string | null | undefined,
+  context: {
+    propertyAddress: string | null;
+    existingParties?: TransactionParty[];
+  }
+): Promise<ExtractedData> {
+  if (documents.length === 0 && !notes?.trim()) {
+    throw new Error("At least one image or notes are required");
+  }
+
+  const blocks: Extract<MessageContent, Array<unknown>> = [];
+
+  for (const doc of documents) {
+    if (doc.kind !== "image") continue;
+    const base64 = Buffer.from(doc.buffer).toString("base64");
+    blocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: doc.mediaType,
+        data: base64,
+      },
+    });
+  }
+
+  const trimmedNotes = notes?.trim() ?? "";
+  if (trimmedNotes) {
+    blocks.push({
+      type: "text",
+      text: `Coordinator notes:\n${trimmedNotes}`,
+    });
+  }
+
+  blocks.push({
+    type: "text",
+    text: buildSupplementalExtractionPrompt({
+      propertyAddress: context.propertyAddress,
+      knownParties: summarizePartiesForPrompt(
+        (context.existingParties ?? []).map((p) => ({
+          role: p.role,
+          name: p.name,
+          company: p.company,
+          email: p.email,
+        }))
+      ),
+    }),
+  });
+
+  const extraction = await client.messages.create({
+    model: "claude-opus-4-6",
+    max_tokens: 3000,
+    messages: [{ role: "user", content: blocks }],
+  });
+
+  const responseText =
+    extraction.content[0].type === "text" ? extraction.content[0].text : "";
+
+  const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+  const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+  return normalizeExtraction(parsed, { supplemental: true });
 }
 
 /** Run Claude extraction on a PDF buffer. */

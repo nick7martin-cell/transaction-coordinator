@@ -324,7 +324,7 @@ export function UploadZone({
           onChange={(e) => setNotes(e.target.value)}
           disabled={uploading}
           rows={3}
-          placeholder="Agent emails, Transaction Desk details, or anything else Claude should know before extracting…"
+          placeholder="Paste listing agent, title closer, lender, or buyer/seller emails and phone numbers — Claude will add them to Transaction Contacts…"
           className="w-full rounded-xl border border-line bg-canvas px-3 py-2.5 text-sm text-ink placeholder:text-ink-mute focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/40 disabled:opacity-60 resize-y min-h-[72px]"
         />
       </div>

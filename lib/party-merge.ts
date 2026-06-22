@@ -1,0 +1,390 @@
+import { OTHER_SIDE_TITLE_UNKNOWN } from "@/lib/transaction-seed";
+import {
+  detectDualAgency,
+  makeParty,
+  type ExtractedData,
+  type TransactionParty,
+} from "@/lib/types";
+
+export type PartyMergeEntry = { label: string; name: string; detail?: string };
+
+function normName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function isBlank(value: string | null | undefined): boolean {
+  return !value?.trim();
+}
+
+function partyListHasName(parties: TransactionParty[], name: string): boolean {
+  const n = normName(name);
+  if (!n) return true;
+  return parties.some((p) => normName(p.name) === n);
+}
+
+function findPartyByRoleAndName(
+  parties: TransactionParty[],
+  role: TransactionParty["role"],
+  name: string
+): TransactionParty | undefined {
+  const n = normName(name);
+  return parties.find((p) => p.role === role && normName(p.name) === n);
+}
+
+function findPartyByRole(
+  parties: TransactionParty[],
+  role: TransactionParty["role"]
+): TransactionParty | undefined {
+  return parties.find((p) => p.role === role);
+}
+
+function fillBlankFields(
+  party: TransactionParty,
+  patch: Partial<Pick<TransactionParty, "name" | "company" | "email" | "phone">>
+): { party: TransactionParty; updated: string[] } {
+  const next = { ...party };
+  const updated: string[] = [];
+
+  for (const key of ["name", "company", "email", "phone"] as const) {
+    const value = patch[key]?.trim();
+    if (value && isBlank(next[key])) {
+      next[key] = value;
+      updated.push(key);
+    }
+  }
+
+  return { party: next, updated };
+}
+
+function applyPartyUpdate(
+  parties: TransactionParty[],
+  id: string,
+  next: TransactionParty
+): TransactionParty[] {
+  return parties.map((p) => (p.id === id ? next : p));
+}
+
+function titleInfoFromExtraction(
+  d: ExtractedData,
+  side: "buyer" | "seller"
+): { company: string; name: string; email: string; phone: string } {
+  if (side === "buyer") {
+    return {
+      company: d.buyerTitleCompany ?? d.titleCompany ?? "",
+      name: d.buyerTitleCloserName ?? "",
+      email: d.buyerTitleCloserEmail ?? "",
+      phone: d.buyerTitleCloserPhone ?? "",
+    };
+  }
+  return {
+    company: d.sellerTitleCompany ?? "",
+    name: d.sellerTitleCloserName ?? "",
+    email: d.sellerTitleCloserEmail ?? "",
+    phone: d.sellerTitleCloserPhone ?? "",
+  };
+}
+
+function hasTitleInfo(info: {
+  company: string;
+  name: string;
+  email: string;
+  phone: string;
+}): boolean {
+  return !!(info.company.trim() || info.name.trim() || info.email.trim() || info.phone.trim());
+}
+
+function mergeTitleParty(
+  parties: TransactionParty[],
+  role: "buyer_title" | "seller_title",
+  info: { company: string; name: string; email: string; phone: string },
+  added: PartyMergeEntry[],
+  updated: PartyMergeEntry[]
+): TransactionParty[] {
+  if (!hasTitleInfo(info)) return parties;
+
+  const label = role === "buyer_title" ? "Buyer's title" : "Seller's title";
+  let next = [...parties];
+  const existing = findPartyByRole(next, role);
+
+  if (existing) {
+    const isPlaceholder =
+      existing.company === OTHER_SIDE_TITLE_UNKNOWN &&
+      isBlank(existing.name) &&
+      isBlank(existing.email);
+
+    const patch = isPlaceholder
+      ? info
+      : {
+          company: info.company,
+          name: info.name,
+          email: info.email,
+          phone: info.phone,
+        };
+
+    const { party, updated: fields } = fillBlankFields(existing, patch);
+    if (isPlaceholder && (info.company || info.name)) {
+      next = applyPartyUpdate(next, existing.id, {
+        ...party,
+        company: info.company || party.company,
+        name: info.name || party.name,
+      });
+      updated.push({
+        label,
+        name: info.name || info.company || role,
+        detail: "contact info from extraction",
+      });
+      return next;
+    }
+
+    if (fields.length > 0) {
+      next = applyPartyUpdate(next, existing.id, party);
+      updated.push({
+        label,
+        name: party.name || party.company || role,
+        detail: fields.join(", "),
+      });
+    }
+    return next;
+  }
+
+  next.push(
+    makeParty({
+      role,
+      name: info.name,
+      company: info.company,
+      email: info.email,
+      phone: info.phone,
+    })
+  );
+  added.push({
+    label,
+    name: info.name || info.company || role,
+  });
+  return next;
+}
+
+function mergeLenderParty(
+  parties: TransactionParty[],
+  d: ExtractedData,
+  added: PartyMergeEntry[],
+  updated: PartyMergeEntry[]
+): TransactionParty[] {
+  const hasLender =
+    d.lenderName?.trim() ||
+    d.lenderCompany?.trim() ||
+    d.lenderEmail?.trim() ||
+    d.lenderPhone?.trim();
+  if (!hasLender) return parties;
+
+  let next = [...parties];
+  const existing = findPartyByRole(next, "lender");
+
+  if (existing) {
+    const { party, updated: fields } = fillBlankFields(existing, {
+      name: d.lenderName ?? "",
+      company: d.lenderCompany ?? "",
+      email: d.lenderEmail ?? "",
+      phone: d.lenderPhone ?? "",
+    });
+    if (fields.length > 0) {
+      next = applyPartyUpdate(next, existing.id, party);
+      updated.push({
+        label: "Lender",
+        name: party.name || party.company || "Lender",
+        detail: fields.join(", "),
+      });
+    }
+    return next;
+  }
+
+  next.push(
+    makeParty({
+      role: "lender",
+      name: d.lenderName ?? "",
+      company: d.lenderCompany ?? "",
+      email: d.lenderEmail ?? "",
+      phone: d.lenderPhone ?? "",
+    })
+  );
+  added.push({
+    label: "Lender",
+    name: d.lenderName?.trim() || d.lenderCompany?.trim() || "Lender",
+  });
+  return next;
+}
+
+/**
+ * Merge extracted party contact info into an existing roster.
+ * Adds new parties and fills blank email/phone/company fields on matches —
+ * never overwrites populated contact details.
+ */
+export function mergePartiesFromExtraction(
+  existing: TransactionParty[],
+  d: ExtractedData
+): { parties: TransactionParty[]; added: PartyMergeEntry[]; updated: PartyMergeEntry[] } {
+  let parties = [...existing];
+  const added: PartyMergeEntry[] = [];
+  const updated: PartyMergeEntry[] = [];
+  const dual = detectDualAgency(d);
+
+  d.buyerNames.forEach((name, i) => {
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+
+    const existingBuyer = findPartyByRoleAndName(parties, "buyer", trimmed);
+    if (existingBuyer) {
+      const { party, updated: fields } = fillBlankFields(existingBuyer, {
+        email: d.buyerEmails[i] ?? "",
+        phone: d.buyerPhones[i] ?? "",
+      });
+      if (fields.length > 0) {
+        parties = applyPartyUpdate(parties, existingBuyer.id, party);
+        updated.push({ label: "Buyer", name: trimmed, detail: fields.join(", ") });
+      }
+      return;
+    }
+
+    if (partyListHasName(parties, trimmed)) return;
+    parties.push(
+      makeParty({
+        name: trimmed,
+        role: "buyer",
+        company: "",
+        email: d.buyerEmails[i] ?? "",
+        phone: d.buyerPhones[i] ?? "",
+      })
+    );
+    added.push({ label: "Buyer", name: trimmed });
+  });
+
+  d.sellerNames.forEach((name, i) => {
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+
+    const existingSeller = findPartyByRoleAndName(parties, "seller", trimmed);
+    if (existingSeller) {
+      const { party, updated: fields } = fillBlankFields(existingSeller, {
+        email: d.sellerEmails[i] ?? "",
+        phone: d.sellerPhones[i] ?? "",
+      });
+      if (fields.length > 0) {
+        parties = applyPartyUpdate(parties, existingSeller.id, party);
+        updated.push({ label: "Seller", name: trimmed, detail: fields.join(", ") });
+      }
+      return;
+    }
+
+    if (partyListHasName(parties, trimmed)) return;
+    parties.push(
+      makeParty({
+        name: trimmed,
+        role: "seller",
+        company: "",
+        email: d.sellerEmails[i] ?? "",
+        phone: d.sellerPhones[i] ?? "",
+      })
+    );
+    added.push({ label: "Seller", name: trimmed });
+  });
+
+  const sameAgent =
+    !!d.buyerAgentName &&
+    !!d.listingAgentName &&
+    normName(d.buyerAgentName) === normName(d.listingAgentName);
+
+  if (d.buyerAgentName?.trim()) {
+    const trimmed = d.buyerAgentName.trim();
+    const role = dual ? "agent_unconfirmed" : "buyer_agent";
+    const existingAgent =
+      findPartyByRoleAndName(parties, role, trimmed) ??
+      findPartyByRoleAndName(parties, "buyer_agent", trimmed) ??
+      findPartyByRoleAndName(parties, "agent_unconfirmed", trimmed);
+
+    if (existingAgent) {
+      const { party, updated: fields } = fillBlankFields(existingAgent, {
+        company: d.buyerAgentBrokerage ?? "",
+        email: d.buyerAgentEmail ?? "",
+        phone: d.buyerAgentPhone ?? "",
+      });
+      if (fields.length > 0) {
+        parties = applyPartyUpdate(parties, existingAgent.id, party);
+        updated.push({
+          label: dual ? "Agent (needs confirmation)" : "Buyer's agent",
+          name: trimmed,
+          detail: fields.join(", "),
+        });
+      }
+    } else if (!partyListHasName(parties, trimmed)) {
+      parties.push(
+        makeParty({
+          name: trimmed,
+          role,
+          company: d.buyerAgentBrokerage ?? "",
+          email: d.buyerAgentEmail ?? "",
+          phone: d.buyerAgentPhone ?? "",
+        })
+      );
+      added.push({
+        label: dual ? "Agent (needs confirmation)" : "Buyer's agent",
+        name: trimmed,
+      });
+    }
+  }
+
+  if (d.listingAgentName?.trim() && !sameAgent) {
+    const trimmed = d.listingAgentName.trim();
+    const role = dual ? "agent_unconfirmed" : "listing_agent";
+    const existingAgent =
+      findPartyByRoleAndName(parties, role, trimmed) ??
+      findPartyByRoleAndName(parties, "listing_agent", trimmed) ??
+      findPartyByRoleAndName(parties, "agent_unconfirmed", trimmed);
+
+    if (existingAgent) {
+      const { party, updated: fields } = fillBlankFields(existingAgent, {
+        company: d.listingAgentBrokerage ?? "",
+        email: d.listingAgentEmail ?? "",
+        phone: d.listingAgentPhone ?? "",
+      });
+      if (fields.length > 0) {
+        parties = applyPartyUpdate(parties, existingAgent.id, party);
+        updated.push({
+          label: dual ? "Agent (needs confirmation)" : "Listing agent",
+          name: trimmed,
+          detail: fields.join(", "),
+        });
+      }
+    } else if (!partyListHasName(parties, trimmed)) {
+      parties.push(
+        makeParty({
+          name: trimmed,
+          role,
+          company: d.listingAgentBrokerage ?? "",
+          email: d.listingAgentEmail ?? "",
+          phone: d.listingAgentPhone ?? "",
+        })
+      );
+      added.push({
+        label: dual ? "Agent (needs confirmation)" : "Listing agent",
+        name: trimmed,
+      });
+    }
+  }
+
+  parties = mergeTitleParty(
+    parties,
+    "buyer_title",
+    titleInfoFromExtraction(d, "buyer"),
+    added,
+    updated
+  );
+  parties = mergeTitleParty(
+    parties,
+    "seller_title",
+    titleInfoFromExtraction(d, "seller"),
+    added,
+    updated
+  );
+  parties = mergeLenderParty(parties, d, added, updated);
+
+  return { parties, added, updated };
+}
