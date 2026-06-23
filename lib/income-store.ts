@@ -98,20 +98,23 @@ export async function savePaidKeys(keys: Set<string>): Promise<void> {
   }
 }
 
-/** Seed paid_keys for imported manual rows marked paid in the sheet (through June 2026). */
+/** Seed paid_keys once on first setup. After that, paid_keys in Supabase is the source of truth. */
 export async function ensure2026PaidKeysSeeded(): Promise<number> {
-  const state = await loadPaidKeys();
-  if (!state.writable) return 0;
+  const { data, error } = await supabase
+    .from("income_tracker")
+    .select("id")
+    .eq("id", TRACKER_ID)
+    .maybeSingle();
 
-  let added = 0;
-  for (const entry of SEED_2026) {
-    const seedRow = seedRowForEntry(entry);
-    if (shouldSeedPaid(entry, seedRow) && !state.keys.has(entry.id)) {
-      state.keys.add(entry.id);
-      added += 1;
-    }
+  if (error) {
+    if (isIncomeTrackerAccessError(error.message)) return 0;
+    throw new Error(error.message);
   }
 
-  if (added > 0) await savePaidKeys(state.keys);
-  return added;
+  // Row exists — respect user toggles; never re-merge from sheet seed.
+  if (data) return 0;
+
+  const keys = defaultPaidKeysFromSeed();
+  await savePaidKeys(keys);
+  return keys.size;
 }

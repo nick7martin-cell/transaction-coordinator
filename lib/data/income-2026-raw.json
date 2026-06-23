@@ -789,7 +789,7 @@
     "amount": 50,
     "agentLabel": "Jeremy - Listing",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-15",
@@ -829,7 +829,7 @@
     "amount": 698.75,
     "agentLabel": "Jadde - Buy Side",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-17",
