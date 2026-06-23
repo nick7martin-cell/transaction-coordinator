@@ -18,13 +18,25 @@ export type PaidKeysState = {
   writable: boolean;
 };
 
+function seedRowForEntry(entry: ManualIncomeEntry) {
+  return seedRows2026.find(
+    (r) =>
+      r.closeDate === entry.closeDate &&
+      r.address === entry.address &&
+      r.agentLabel === entry.agentLabel
+  );
+}
+
+function shouldSeedPaid(entry: ManualIncomeEntry, seedRow: (typeof seedRows2026)[number] | undefined): boolean {
+  if (!seedRow) return entry.amount === 0;
+  return seedRow.paid === true || seedRow.amount === 0;
+}
+
 function defaultPaidKeysFromSeed(): Set<string> {
   const keys = new Set<string>();
   for (const entry of SEED_2026) {
-    const seedRow = seedRows2026.find(
-      (r) => r.closeDate === entry.closeDate && r.address === entry.address
-    );
-    if (seedRow?.paid) keys.add(entry.id);
+    const seedRow = seedRowForEntry(entry);
+    if (shouldSeedPaid(entry, seedRow)) keys.add(entry.id);
   }
   return keys;
 }
@@ -93,10 +105,8 @@ export async function ensure2026PaidKeysSeeded(): Promise<number> {
 
   let added = 0;
   for (const entry of SEED_2026) {
-    const seedRow = seedRows2026.find(
-      (r) => r.closeDate === entry.closeDate && r.address === entry.address
-    );
-    if (seedRow?.paid && !state.keys.has(entry.id)) {
+    const seedRow = seedRowForEntry(entry);
+    if (shouldSeedPaid(entry, seedRow) && !state.keys.has(entry.id)) {
       state.keys.add(entry.id);
       added += 1;
     }

@@ -123,7 +123,7 @@
     "closeDate": "2026-02-04",
     "address": "319 Heritage Trail",
     "amount": 980.29,
-    "agentLabel": "Collin - Buy Side",
+    "agentLabel": "Collin - Dual Side",
     "isNickDeal": false,
     "paid": true
   },
@@ -308,6 +308,14 @@
     "address": "2767 21st St",
     "amount": 50,
     "agentLabel": "Lucas - Buy Side",
+    "isNickDeal": false,
+    "paid": true
+  },
+  {
+    "closeDate": "2026-03-13",
+    "address": "5580 Aldine St",
+    "amount": 0,
+    "agentLabel": "Jadde - Listing",
     "isNickDeal": false,
     "paid": true
   },
@@ -499,7 +507,7 @@
     "closeDate": "2026-05-01",
     "address": "13734 85th Ave",
     "amount": 1140,
-    "agentLabel": "Jadde - Buy Side",
+    "agentLabel": "Jadde - Dual Side",
     "isNickDeal": false,
     "paid": true
   },
@@ -848,20 +856,12 @@
     "paid": true
   },
   {
-    "closeDate": "2026-06-19",
-    "address": "3919 36th Ave",
-    "amount": 50,
-    "agentLabel": "Jadde - Buy Side",
-    "isNickDeal": false,
-    "paid": true
-  },
-  {
     "closeDate": "2026-06-26",
     "address": "2542 147th Ln",
     "amount": 50,
     "agentLabel": "Luke - Buy Side",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-26",
@@ -869,7 +869,7 @@
     "amount": 50,
     "agentLabel": "Jeremy - Listing",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-26",
@@ -877,7 +877,7 @@
     "amount": 50,
     "agentLabel": "Jeremy - Buy Side",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-26",
@@ -885,7 +885,7 @@
     "amount": 50,
     "agentLabel": "Brett - Buy Side",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-26",
@@ -893,7 +893,7 @@
     "amount": 50,
     "agentLabel": "Collin - Listing",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-30",
@@ -901,7 +901,7 @@
     "amount": 50,
     "agentLabel": "Collin - Listing",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-30",
@@ -909,7 +909,7 @@
     "amount": 50,
     "agentLabel": "Collin - Buy Side",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-30",
@@ -917,7 +917,7 @@
     "amount": 50,
     "agentLabel": "Nazar - Buy Side",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-30",
@@ -925,7 +925,7 @@
     "amount": 50,
     "agentLabel": "Nazar - Listing",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-06-30",
@@ -933,7 +933,7 @@
     "amount": 50,
     "agentLabel": "Collin - Listing",
     "isNickDeal": false,
-    "paid": true
+    "paid": false
   },
   {
     "closeDate": "2026-07-01",
@@ -1113,14 +1113,6 @@
   },
   {
     "closeDate": "2026-07-24",
-    "address": "5487 Kahler Dr",
-    "amount": 50,
-    "agentLabel": "Jadde - Buy Side",
-    "isNickDeal": false,
-    "paid": false
-  },
-  {
-    "closeDate": "2026-07-24",
     "address": "3742 Lucy Ct",
     "amount": 50,
     "agentLabel": "Jadde - Buy Side",
@@ -1163,7 +1155,7 @@
     "closeDate": "2026-07-31",
     "address": "8852 Brunell Way",
     "amount": 100,
-    "agentLabel": "Jadde - Buy Side",
+    "agentLabel": "Jadde - Dual Side",
     "isNickDeal": false,
     "paid": false
   },

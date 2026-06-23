@@ -24,27 +24,55 @@ export interface ImportedIncomeRow {
 const STREET_SUFFIX =
   /\s+(?:Circle|Cir\.?|Court|Ct\.?|Drive|Dr\.?|Lane|Ln\.?|Road|Rd\.?|Street|St\.?|Trail|Trl\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Place|Pl\.?|Way|Terrace|Ter\.?|Path|Pkwy|Parkway|Boulevard)\.?$/i;
 
+const UNIT_SUFFIX =
+  /\s*(?:#|unit|apt|apartment|suite|ste\.?|bldg|building)\s*[\w-]+.*$/i;
+
+const TRAILING_DIRECTIONAL =
+  /\s+(?:N|S|E|W|NE|NW|SE|SW|North|South|East|West)\.?$/i;
+
+const SUFFIX_TOKENS =
+  /\b(?:circle|cir|court|ct|drive|dr|lane|ln|road|rd|street|st|trail|trl|avenue|ave|boulevard|blvd|place|pl|way|terrace|ter|path|pkwy|parkway)\b/gi;
+
 export function normalizeIncomeAddress(address: string): string {
-  return address
-    .trim()
-    .replace(/,/g, "")
-    .replace(STREET_SUFFIX, "")
+  let s = address.trim().replace(/,/g, " ");
+  s = s.replace(UNIT_SUFFIX, "");
+  s = s.replace(TRAILING_DIRECTIONAL, "");
+  s = s.replace(STREET_SUFFIX, "");
+  s = s.replace(SUFFIX_TOKENS, "");
+  return s
     .replace(/[^a-zA-Z0-9 ]/g, "")
     .replace(/\s+/g, " ")
+    .trim()
     .toUpperCase();
 }
 
-export function incomeDedupeKey(closeDate: string, address: string, amount?: number): string {
-  const base = `${closeDate}|${normalizeIncomeAddress(address)}`;
-  return amount != null ? `${base}|${amount.toFixed(2)}` : base;
+export function agentSideKey(agentLabel: string): string {
+  const lower = agentLabel.toLowerCase();
+  if (lower.includes("listing")) return "listing";
+  if (lower.includes("buy side") || lower.includes("buy-side")) return "buy";
+  if (lower.includes("dual")) return "dual";
+  return lower.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "deal";
 }
 
-export function manualIncomeRowId(closeDate: string, address: string): string {
+export function incomeDedupeKey(
+  closeDate: string,
+  address: string,
+  agentLabel?: string
+): string {
+  const side = agentLabel ? agentSideKey(agentLabel) : "";
+  return `${closeDate}|${normalizeIncomeAddress(address)}|${side}`;
+}
+
+export function manualIncomeRowId(
+  closeDate: string,
+  address: string,
+  agentLabel: string
+): string {
   const slug = normalizeIncomeAddress(address)
     .toLowerCase()
     .replace(/\s+/g, "-")
-    .slice(0, 48);
-  return `manual-${closeDate}-${slug}`;
+    .slice(0, 40);
+  return `manual-${closeDate}-${slug}-${agentSideKey(agentLabel)}`;
 }
 
 export function buildManualIncomeRow(
@@ -62,7 +90,7 @@ export function buildManualIncomeRow(
     address: entry.address,
     amount: entry.amount,
     agentLabel: entry.agentLabel,
-    paid: paidKeys.has(entry.id),
+    paid: paidKeys.has(entry.id) || entry.amount === 0,
     isBasePay: false,
     isNickDeal: entry.isNickDeal,
     status: close.getTime() <= today.getTime() ? "closed" : "active",
@@ -86,7 +114,7 @@ export function coerceManualEntries(raw: unknown): ManualIncomeEntry[] {
     if (!Number.isFinite(year)) continue;
 
     out.push({
-      id: String(r.id ?? manualIncomeRowId(closeDate, address)),
+      id: String(r.id ?? manualIncomeRowId(closeDate, address, agentLabel)),
       closeDate,
       address,
       amount,
@@ -121,14 +149,14 @@ export function importedRowsToManualEntries(
       continue;
     }
 
-    const dedupe = incomeDedupeKey(closeDate, address);
+    const dedupe = incomeDedupeKey(closeDate, address, agentLabel);
     if (seen.has(dedupe)) {
       skipped += 1;
       continue;
     }
     seen.add(dedupe);
 
-    const id = manualIncomeRowId(closeDate, address);
+    const id = manualIncomeRowId(closeDate, address, agentLabel);
     if (existingIds.has(id)) {
       skipped += 1;
       continue;
@@ -158,7 +186,7 @@ export function transactionDedupeKeys(rows: IncomeRow[]): Set<string> {
   return new Set(
     rows
       .filter((r) => !r.isBasePay && r.transactionId)
-      .map((r) => incomeDedupeKey(r.closeDate, r.address))
+      .map((r) => incomeDedupeKey(r.closeDate, r.address, r.agentLabel))
   );
 }
 
@@ -168,7 +196,7 @@ export function filterManualAgainstTransactions(
 ): { kept: ManualIncomeEntry[]; skipped: number } {
   let skipped = 0;
   const kept = manual.filter((entry) => {
-    const key = incomeDedupeKey(entry.closeDate, entry.address);
+    const key = incomeDedupeKey(entry.closeDate, entry.address, entry.agentLabel);
     if (transactionKeys.has(key)) {
       skipped += 1;
       return false;
@@ -176,4 +204,24 @@ export function filterManualAgainstTransactions(
     return true;
   });
   return { kept, skipped };
+}
+
+/** Collapse duplicate deal rows (Handled + sheet import) — prefer live transaction. */
+export function dedupeDealRows(rows: IncomeRow[]): IncomeRow[] {
+  const map = new Map<string, IncomeRow>();
+  for (const row of rows) {
+    if (row.isBasePay) continue;
+    const key = incomeDedupeKey(row.closeDate, row.address, row.agentLabel);
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, row);
+      continue;
+    }
+    if (!existing.transactionId && row.transactionId) {
+      map.set(key, row);
+    }
+  }
+  const deduped = [...map.values()];
+  const baseRows = rows.filter((r) => r.isBasePay);
+  return [...baseRows, ...deduped];
 }

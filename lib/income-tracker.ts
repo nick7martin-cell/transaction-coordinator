@@ -1,10 +1,12 @@
 import { findAgent, findAgentIdByName, NICK_TC_FEE } from "@/lib/agents";
 import {
   buildManualIncomeRow,
+  dedupeDealRows,
   filterManualAgainstTransactions,
   type ManualIncomeEntry,
   transactionDedupeKeys,
 } from "@/lib/income-import";
+import { EXCLUDED_INCOME_TRANSACTION_IDS } from "@/lib/data/income-exclusions";
 import type { CommissionResult, SideBreakdown } from "@/lib/commission";
 import { hasSavedCommission, resolveCommissionAutofill } from "@/lib/commission-autofill";
 import { resolveStatus } from "@/lib/transaction-lifecycle";
@@ -22,6 +24,10 @@ export const BASE_PAY_FIRST_MONTH: Record<number, number> = {
 };
 export const NICK_AGENT_ID = "nick-martin";
 export const STANDARD_TC_FEE = NICK_TC_FEE;
+/** RE/MAX Results brokerage fee — net deposit is 95% of agent commission. */
+export const NICK_BROKERAGE_NET_FACTOR = 0.95;
+/** Nick's TC fee when representing both sides of a dual-agency deal. */
+export const DUAL_SIDE_TC_FEE = NICK_TC_FEE * 2;
 
 export interface IncomeRow {
   /** Stable key for paid tracking — transaction UUID or `base-pay-YYYY-MM`. */
@@ -47,16 +53,27 @@ export interface AgentDealCount {
 
 export interface IncomeSummary {
   year: number;
-  ytdEarned: number;
   ytdPaid: number;
+  /** Closed through today (or base pay due) but not yet marked paid. */
+  awaitingPaymentAmount: number;
+  awaitingPaymentCount: number;
   pipelineAmount: number;
   pipelineCount: number;
   projectedYearTotal: number;
   projectedFromPipeline: number;
   projectedFromRunRate: number;
-  avgStandardDeal: number;
+  /** ($50 × deals + $5,000 base pay) ÷ deals, weighted across the year. */
+  avgPayoutPerDeal: number;
   dealsPerMonth: number;
   agentCounts: AgentDealCount[];
+  /** Team deal counts (dual-side = 2). */
+  teamDealsClosed: number;
+  teamDealsPending: number;
+  teamDealsTotal: number;
+  /** Team income through today — base pay + deal fees; Nick deals count as $50 each. */
+  teamIncomeClosed: number;
+  /** Team income for the full year — closed + pending deals + base pay. */
+  teamIncomeProjected: number;
 }
 
 function monthKeyFromDate(isoDate: string): string {
@@ -100,6 +117,12 @@ export function nickPayoutFromCommission(commission: CommissionResult): number {
   return total;
 }
 
+/** Apply brokerage haircut for Nick's deals on the income tracker only. */
+export function incomeTrackerPayout(grossAmount: number, isNickDeal: boolean): number {
+  if (!isNickDeal || grossAmount === 0) return grossAmount;
+  return Math.round(grossAmount * NICK_BROKERAGE_NET_FACTOR * 100) / 100;
+}
+
 function agentLabelFromSide(
   side: SideBreakdown,
   commissionSide: CommissionResult["side"],
@@ -124,9 +147,14 @@ function agentLabelFromAutofill(
   if (!agentId) return "Team Steady";
   const agent = findAgent(agentId);
   const name = firstName(agent?.name ?? "Agent");
-  if (autofill.side === "dual") return `${name} - Dual`;
+  if (autofill.side === "dual") return `${name} - Dual Side`;
   if (autofill.side === "buyer") return `${name} - Buy Side`;
   return `${name} - Listing`;
+}
+
+function isSameAgentDual(commission: CommissionResult): boolean {
+  if (commission.side !== "dual" || !commission.buyer || !commission.seller) return false;
+  return commission.buyer.agentId === commission.seller.agentId;
 }
 
 function isNickDealFromCommission(commission: CommissionResult | null): boolean {
@@ -153,6 +181,9 @@ function estimatePayout(
   if (commission && hasSavedCommission(commission)) {
     return nickPayoutFromCommission(commission);
   }
+  if (autofill?.side === "dual") {
+    return DUAL_SIDE_TC_FEE;
+  }
   if (isNickDealFromAutofill(autofill)) {
     return STANDARD_TC_FEE;
   }
@@ -167,6 +198,9 @@ function primaryAgentLabel(
   if (commission && hasSavedCommission(commission)) {
     const side = commission.side;
     if (side === "dual" && commission.buyer) {
+      if (isSameAgentDual(commission)) {
+        return `${firstName(commission.buyer.agentName)} - Dual Side`;
+      }
       return agentLabelFromSide(
         commission.buyer,
         "dual",
@@ -216,9 +250,10 @@ export function buildTransactionIncomeRow(
 
   if (!teamSteady) return null;
 
-  const amount = estimatePayout(commission, autofill);
+  const grossAmount = estimatePayout(commission, autofill);
   const isNickDeal =
     isNickDealFromCommission(commission) || isNickDealFromAutofill(autofill);
+  const amount = incomeTrackerPayout(grossAmount, isNickDeal);
 
   const today = new Date();
   today.setHours(12, 0, 0, 0);
@@ -268,7 +303,12 @@ export function buildIncomeRows(
 ): IncomeRow[] {
   const dealRows = inputs
     .map((input) => buildTransactionIncomeRow(input, paidKeys))
-    .filter((r): r is IncomeRow => r != null && r.closeDate.startsWith(String(year)));
+    .filter(
+      (r): r is IncomeRow =>
+        r != null &&
+        r.closeDate.startsWith(String(year)) &&
+        !(r.transactionId != null && EXCLUDED_INCOME_TRANSACTION_IDS.has(r.transactionId))
+    );
 
   const txKeys = transactionDedupeKeys(dealRows);
   const { kept: manualForYear } = filterManualAgainstTransactions(
@@ -282,7 +322,9 @@ export function buildIncomeRows(
     buildBasePayRow(mk, paidKeys)
   );
 
-  return [...baseRows, ...dealRows, ...manualRows].sort((a, b) => {
+  const merged = dedupeDealRows([...dealRows, ...manualRows]);
+
+  return [...baseRows, ...merged].sort((a, b) => {
     if (a.isBasePay !== b.isBasePay) return a.isBasePay ? -1 : 1;
     return (
       new Date(a.closeDate + "T12:00:00").getTime() -
@@ -313,33 +355,43 @@ export function computeIncomeSummary(
     return r.status === "active" && close.getTime() > today.getTime();
   });
 
-  const basePayThroughCurrent = baseRows
-    .filter((r) => {
-      const m = parseInt(r.monthKey.split("-")[1] ?? "0", 10);
-      const rowYear = parseInt(r.monthKey.split("-")[0] ?? "0", 10);
+  function countsTowardYtd(row: IncomeRow): boolean {
+    if (row.isBasePay) {
+      const m = parseInt(row.monthKey.split("-")[1] ?? "0", 10);
+      const rowYear = parseInt(row.monthKey.split("-")[0] ?? "0", 10);
       if (rowYear < today.getFullYear()) return true;
       if (rowYear > today.getFullYear()) return false;
       return m <= currentMonth;
-    })
+    }
+    const close = new Date(row.closeDate + "T12:00:00");
+    return row.status === "closed" || close.getTime() <= today.getTime();
+  }
+
+  const ytdRows = yearRows.filter(countsTowardYtd);
+
+  const basePayThroughCurrent = ytdRows
+    .filter((r) => r.isBasePay)
     .reduce((s, r) => s + r.amount, 0);
 
   const basePayFullYear = baseRows.reduce((s, r) => s + r.amount, 0);
 
-  const ytdEarned =
-    closedDeals.reduce((s, r) => s + r.amount, 0) + basePayThroughCurrent;
-
-  const ytdPaid = yearRows
+  const ytdPaid = ytdRows
     .filter((r) => r.paid)
     .reduce((s, r) => s + r.amount, 0);
 
-  const pipelineAmount = pendingDeals.reduce((s, r) => s + r.amount, 0);
-  const pipelineCount = pendingDeals.length;
+  const awaitingPaymentRows = ytdRows.filter((r) => !r.paid);
+  const awaitingPaymentAmount = awaitingPaymentRows.reduce((s, r) => s + r.amount, 0);
+  const awaitingPaymentCount = awaitingPaymentRows
+    .filter((r) => !r.isBasePay)
+    .reduce((s, r) => s + agentDealCredit(r.agentLabel), 0);
 
-  const standardClosed = closedDeals.filter((r) => !r.isNickDeal);
-  const avgStandardDeal =
-    standardClosed.length > 0
-      ? standardClosed.reduce((s, r) => s + r.amount, 0) / standardClosed.length
-      : STANDARD_TC_FEE;
+  const pipelineAmount = pendingDeals.reduce((s, r) => s + r.amount, 0);
+  const pipelineCount = pendingDeals.reduce(
+    (s, r) => s + agentDealCredit(r.agentLabel),
+    0
+  );
+
+  const avgPayoutPerDeal = computeAvgPayoutPerDeal(yearRows);
 
   const monthsElapsed =
     year < today.getFullYear() ? 12 : year > today.getFullYear() ? 0 : currentMonth;
@@ -359,7 +411,7 @@ export function computeIncomeSummary(
           .reduce((s, r) => s + r.amount, 0);
 
   const projectedFromRunRate =
-    monthsRemaining > 0 ? dealsPerMonth * monthsRemaining * avgStandardDeal : 0;
+    monthsRemaining > 0 ? dealsPerMonth * monthsRemaining * avgPayoutPerDeal : 0;
 
   const projectedFromPipeline = pipelineAmount;
 
@@ -370,35 +422,86 @@ export function computeIncomeSummary(
 
   const agentMap = new Map<string, AgentDealCount>();
   for (const row of dealRows) {
-    const match = row.agentLabel.match(/^(.+?)\s-/);
-    const labelName = match?.[1]?.trim() ?? row.agentLabel;
+    const labelName = agentNameFromLabel(row.agentLabel);
+    const credit = agentDealCredit(row.agentLabel);
     const existing = agentMap.get(labelName);
     if (existing) {
-      existing.count += 1;
+      existing.count += credit;
     } else {
       agentMap.set(labelName, {
         agentId: labelName.toLowerCase(),
         agentName: labelName,
-        count: 1,
+        count: credit,
       });
     }
   }
 
   const agentCounts = [...agentMap.values()].sort((a, b) => b.count - a.count);
 
+  const teamDealsClosed = closedDeals.reduce(
+    (s, r) => s + agentDealCredit(r.agentLabel),
+    0
+  );
+  const teamDealsPending = pendingDeals.reduce(
+    (s, r) => s + agentDealCredit(r.agentLabel),
+    0
+  );
+  const teamDealsTotal = teamDealsClosed + teamDealsPending;
+
+  const teamIncomeClosed = ytdRows.reduce((s, r) => s + teamDealPayout(r), 0);
+  const teamIncomeProjected =
+    closedDeals.reduce((s, r) => s + teamDealPayout(r), 0) +
+    pendingDeals.reduce((s, r) => s + teamDealPayout(r), 0) +
+    basePayFullYear;
+
   return {
     year,
-    ytdEarned,
     ytdPaid,
+    awaitingPaymentAmount,
+    awaitingPaymentCount,
     pipelineAmount,
     pipelineCount,
     projectedYearTotal,
     projectedFromPipeline,
     projectedFromRunRate,
-    avgStandardDeal,
+    avgPayoutPerDeal,
     dealsPerMonth,
     agentCounts,
+    teamDealsClosed,
+    teamDealsPending,
+    teamDealsTotal,
+    teamIncomeClosed,
+    teamIncomeProjected,
   };
+}
+
+/** Income attributed to the team — Nick's deals count as $50 per side only. */
+export function teamDealPayout(row: IncomeRow): number {
+  if (row.isBasePay) return row.amount;
+  if (row.isNickDeal) return agentDealCredit(row.agentLabel) * STANDARD_TC_FEE;
+  return row.amount;
+}
+
+/**
+ * Average payout per deal: each month, (deal count × $50 + $5,000) ÷ deal count,
+ * then weighted by deal count across months (months with zero closings skipped).
+ * Base pay applies every month — before June 2026 it was embedded in early closings.
+ */
+export function computeAvgPayoutPerDeal(yearRows: IncomeRow[]): number {
+  const byMonth = groupRowsByMonth(yearRows);
+
+  let totalDeals = 0;
+  let totalComp = 0;
+
+  for (const [, monthRows] of byMonth) {
+    const dealCount = monthDealCount(monthRows);
+    if (dealCount === 0) continue;
+
+    totalDeals += dealCount;
+    totalComp += dealCount * STANDARD_TC_FEE + BASE_PAY_AMOUNT;
+  }
+
+  return totalDeals > 0 ? totalComp / totalDeals : STANDARD_TC_FEE;
 }
 
 export function groupRowsByMonth(rows: IncomeRow[]): Map<string, IncomeRow[]> {
@@ -432,4 +535,45 @@ export function monthTotal(rows: IncomeRow[]): number {
 
 export function monthPaidTotal(rows: IncomeRow[]): number {
   return rows.filter((r) => r.paid).reduce((s, r) => s + r.amount, 0);
+}
+
+export function agentNameFromLabel(agentLabel: string): string {
+  const match = agentLabel.match(/^(.+?)\s-/);
+  return match?.[1]?.trim() ?? agentLabel;
+}
+
+/** Deal credits for agent stats — dual-sided closings count as 2. */
+export function agentDealCredit(agentLabel: string): number {
+  return agentLabel.includes("Dual Side") ? 2 : 1;
+}
+
+export function monthDealCount(rows: IncomeRow[]): number {
+  return rows
+    .filter((r) => !r.isBasePay)
+    .reduce((sum, r) => sum + agentDealCredit(r.agentLabel), 0);
+}
+
+export function monthDealTotal(rows: IncomeRow[]): number {
+  return rows.filter((r) => !r.isBasePay).reduce((s, r) => s + r.amount, 0);
+}
+
+export function monthDealPaidTotal(rows: IncomeRow[]): number {
+  return rows
+    .filter((r) => !r.isBasePay && r.paid)
+    .reduce((s, r) => s + r.amount, 0);
+}
+
+export function filterRowsByAgent(rows: IncomeRow[], agentName: string): IncomeRow[] {
+  const target = agentName.trim().toLowerCase();
+  return rows.filter(
+    (r) => !r.isBasePay && agentNameFromLabel(r.agentLabel).toLowerCase() === target
+  );
+}
+
+export function sortRowsByCloseDate(rows: IncomeRow[]): IncomeRow[] {
+  return [...rows].sort(
+    (a, b) =>
+      new Date(a.closeDate + "T12:00:00").getTime() -
+      new Date(b.closeDate + "T12:00:00").getTime()
+  );
 }
