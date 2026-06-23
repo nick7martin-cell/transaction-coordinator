@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
+  CircleDollarSign,
   FileStack,
+  LayoutDashboard,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transactions", label: "Transactions", icon: FileStack },
+  { href: "/income", label: "Income", icon: CircleDollarSign },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

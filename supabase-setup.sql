@@ -83,6 +83,23 @@ ALTER TABLE transaction_meta
 ALTER TABLE transaction_meta
   ADD COLUMN IF NOT EXISTS parties JSONB DEFAULT '[]'::jsonb;
 
+-- ── Income tracker (paid flags for coordinator payouts) ───────────────────────
+CREATE TABLE IF NOT EXISTS income_tracker (
+  id         TEXT        PRIMARY KEY DEFAULT 'default',
+  paid_keys  JSONB       DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE income_tracker DISABLE ROW LEVEL SECURITY;
+
+-- Required for the anon key (PostgREST). Without these grants you get
+-- "permission denied for table income_tracker".
+GRANT ALL ON TABLE income_tracker TO anon, authenticated, service_role;
+
+INSERT INTO income_tracker (id, paid_keys)
+VALUES ('default', '[]'::jsonb)
+ON CONFLICT (id) DO NOTHING;
+
 -- ── Gmail OAuth tokens (encrypted at rest) ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS gmail_integration (
   id                       TEXT        PRIMARY KEY DEFAULT 'default',
