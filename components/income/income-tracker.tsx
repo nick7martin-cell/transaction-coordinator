@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   computeIncomeSummary,
+  defaultExpandedMonthKeys,
   formatMonthLabel,
   groupRowsByMonth,
   monthDealCount,
@@ -457,6 +459,7 @@ function AgentDealsSection({
 }
 
 export function IncomeTrackerView() {
+  const pathname = usePathname();
   const [year, setYear] = useState(new Date().getFullYear());
   const [data, setData] = useState<IncomeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -493,13 +496,19 @@ export function IncomeTrackerView() {
     [data]
   );
 
+  const byMonth = useMemo(
+    () => (data ? groupRowsByMonth(data.rows) : new Map<string, IncomeRow[]>()),
+    [data]
+  );
+
+  const applyDefaultExpandedMonths = useCallback(() => {
+    setExpandedMonths(defaultExpandedMonthKeys(monthKeys));
+  }, [monthKeys]);
+
   useEffect(() => {
-    if (monthKeys.length === 0) {
-      setExpandedMonths(new Set());
-      return;
-    }
-    setExpandedMonths(new Set([monthKeys[monthKeys.length - 1]!]));
-  }, [year, monthKeys.join(",")]);
+    if (pathname !== "/income") return;
+    applyDefaultExpandedMonths();
+  }, [pathname, applyDefaultExpandedMonths]);
 
   async function togglePaid(id: string, paid: boolean) {
     setTogglingId(id);
@@ -526,11 +535,6 @@ export function IncomeTrackerView() {
       setTogglingId(null);
     }
   }
-
-  const byMonth = useMemo(
-    () => (data ? groupRowsByMonth(data.rows) : new Map<string, IncomeRow[]>()),
-    [data]
-  );
 
   const agentDeals = useMemo(() => {
     if (!data || !selectedAgent) return [];

@@ -655,6 +655,24 @@ export function groupRowsByMonth(rows: IncomeRow[]): Map<string, IncomeRow[]> {
   return map;
 }
 
+/** Default which month sections start expanded: current calendar month + the next month only. */
+export function defaultExpandedMonthKeys(
+  monthKeys: string[],
+  now: Date = new Date()
+): Set<string> {
+  if (monthKeys.length === 0) return new Set();
+
+  const todayYear = now.getFullYear();
+  const todayMonth = now.getMonth() + 1;
+
+  const currentKey = `${todayYear}-${String(todayMonth).padStart(2, "0")}`;
+  const nextMonthDate = new Date(todayYear, todayMonth, 1);
+  const nextKey = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}`;
+
+  const openKeys = new Set([currentKey, nextKey]);
+  return new Set(monthKeys.filter((mk) => openKeys.has(mk)));
+}
+
 export function formatMonthLabel(monthKey: string): string {
   const [y, m] = monthKey.split("-");
   const date = new Date(Number(y), Number(m) - 1, 1);
