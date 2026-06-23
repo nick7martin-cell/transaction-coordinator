@@ -6,6 +6,10 @@ import {
 } from "@/lib/extraction-prompt";
 import type { ExtractedData, TransactionParty } from "@/lib/types";
 
+/** Sonnet is accurate for structured PA extraction at ~40% lower cost than Opus. */
+export const EXTRACTION_MODEL =
+  process.env.ANTHROPIC_EXTRACTION_MODEL ?? "claude-sonnet-4-6";
+
 const client = new Anthropic();
 
 export function normalizeExtraction(
@@ -59,8 +63,7 @@ export function normalizeExtraction(
     dualAgency: Boolean(raw.dualAgency),
     contingencies: Array.isArray(raw.contingencies) ? raw.contingencies.map(String) : [],
     titleCompany: (raw.titleCompany as string) ?? null,
-    buyerTitleCompany:
-      (raw.buyerTitleCompany as string) ?? (raw.titleCompany as string) ?? null,
+    buyerTitleCompany: (raw.buyerTitleCompany as string) ?? null,
     buyerTitleCloserName: (raw.buyerTitleCloserName as string) ?? null,
     buyerTitleCloserEmail: (raw.buyerTitleCloserEmail as string) ?? null,
     buyerTitleCloserPhone: (raw.buyerTitleCloserPhone as string) ?? null,
@@ -176,7 +179,7 @@ export async function extractFromDocuments(
   }
 
   const extraction = await client.messages.create({
-    model: "claude-opus-4-6",
+    model: EXTRACTION_MODEL,
     max_tokens: 3000,
     messages: [
       {
@@ -246,7 +249,7 @@ export async function extractSupplementalContacts(
   });
 
   const extraction = await client.messages.create({
-    model: "claude-opus-4-6",
+    model: EXTRACTION_MODEL,
     max_tokens: 3000,
     messages: [{ role: "user", content: blocks }],
   });

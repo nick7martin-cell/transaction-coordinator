@@ -69,7 +69,7 @@ const TEAM_STEADY_EMAILS: Record<string, string> = {
   brett: "brett@teamsteady.com",
   jadde: "jadde@teamsteady.com",
   collin: "collin@teamsteady.com",
-  derek: "derek@teamsteady.com",
+  derek: "derek@derekjopp.com",
   nazar: "nazar@teamsteady.com",
   landon: "landon@teamsteady.com",
   alonte: "alonte@teamsteady.com",

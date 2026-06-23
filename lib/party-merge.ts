@@ -1,4 +1,4 @@
-import { OTHER_SIDE_TITLE_UNKNOWN } from "@/lib/transaction-seed";
+import { OTHER_SIDE_TITLE_UNKNOWN, titleInfoForSide } from "@/lib/transaction-seed";
 import {
   detectDualAgency,
   makeParty,
@@ -64,26 +64,6 @@ function applyPartyUpdate(
   return parties.map((p) => (p.id === id ? next : p));
 }
 
-function titleInfoFromExtraction(
-  d: ExtractedData,
-  side: "buyer" | "seller"
-): { company: string; name: string; email: string; phone: string } {
-  if (side === "buyer") {
-    return {
-      company: d.buyerTitleCompany ?? d.titleCompany ?? "",
-      name: d.buyerTitleCloserName ?? "",
-      email: d.buyerTitleCloserEmail ?? "",
-      phone: d.buyerTitleCloserPhone ?? "",
-    };
-  }
-  return {
-    company: d.sellerTitleCompany ?? "",
-    name: d.sellerTitleCloserName ?? "",
-    email: d.sellerTitleCloserEmail ?? "",
-    phone: d.sellerTitleCloserPhone ?? "",
-  };
-}
-
 function hasTitleInfo(info: {
   company: string;
   name: string;
@@ -91,6 +71,33 @@ function hasTitleInfo(info: {
   phone: string;
 }): boolean {
   return !!(info.company.trim() || info.name.trim() || info.email.trim() || info.phone.trim());
+}
+
+/** Default Watermark/Ingrid seed — replace when supplemental extraction names a different title co. */
+function isDefaultSeededTitle(party: TransactionParty): boolean {
+  const name = normName(party.name);
+  const company = party.company.trim().toLowerCase();
+  const email = party.email.trim().toLowerCase();
+  return (
+    (name.includes("ingrid") && name.includes("bredeson")) ||
+    company.includes("watermark") ||
+    email.includes("wmtitle.com")
+  );
+}
+
+function extractedTitleDiffers(
+  existing: TransactionParty,
+  info: { company: string; name: string; email: string; phone: string }
+): boolean {
+  if (info.company.trim() && normName(info.company) !== normName(existing.company)) return true;
+  if (info.name.trim() && normName(info.name) !== normName(existing.name)) return true;
+  if (
+    info.email.trim() &&
+    info.email.trim().toLowerCase() !== existing.email.trim().toLowerCase()
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function mergeTitleParty(
@@ -107,34 +114,35 @@ function mergeTitleParty(
   const existing = findPartyByRole(next, role);
 
   if (existing) {
-    const isPlaceholder =
-      existing.company === OTHER_SIDE_TITLE_UNKNOWN &&
-      isBlank(existing.name) &&
-      isBlank(existing.email);
+    const isUnknownSlot = existing.company === OTHER_SIDE_TITLE_UNKNOWN;
 
-    const patch = isPlaceholder
-      ? info
-      : {
-          company: info.company,
-          name: info.name,
-          email: info.email,
-          phone: info.phone,
-        };
+    const replaceDefault =
+      isDefaultSeededTitle(existing) && extractedTitleDiffers(existing, info);
 
-    const { party, updated: fields } = fillBlankFields(existing, patch);
-    if (isPlaceholder && (info.company || info.name)) {
+    if (isUnknownSlot || replaceDefault) {
       next = applyPartyUpdate(next, existing.id, {
-        ...party,
-        company: info.company || party.company,
-        name: info.name || party.name,
+        ...existing,
+        company: info.company || (isUnknownSlot ? "" : existing.company),
+        name: info.name || existing.name,
+        email: info.email || existing.email,
+        phone: info.phone || existing.phone,
       });
       updated.push({
         label,
-        name: info.name || info.company || role,
-        detail: "contact info from extraction",
+        name: info.name || info.company || existing.name || existing.company || role,
+        detail: replaceDefault
+          ? "replaced default title contact from extraction"
+          : "contact info from extraction",
       });
       return next;
     }
+
+    const { party, updated: fields } = fillBlankFields(existing, {
+      company: info.company,
+      name: info.name,
+      email: info.email,
+      phone: info.phone,
+    });
 
     if (fields.length > 0) {
       next = applyPartyUpdate(next, existing.id, party);
@@ -373,14 +381,14 @@ export function mergePartiesFromExtraction(
   parties = mergeTitleParty(
     parties,
     "buyer_title",
-    titleInfoFromExtraction(d, "buyer"),
+    titleInfoForSide(d, "buyer"),
     added,
     updated
   );
   parties = mergeTitleParty(
     parties,
     "seller_title",
-    titleInfoFromExtraction(d, "seller"),
+    titleInfoForSide(d, "seller"),
     added,
     updated
   );

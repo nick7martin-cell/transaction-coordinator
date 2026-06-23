@@ -30,7 +30,7 @@ export const EXTRACTION_JSON_SCHEMA = `{
   "listingAgentPhone": string or null,
   "dualAgency": boolean (true if the same brokerage OR the same licensee represents both the buyer and the seller),
   "contingencies": array of strings listing each contingency mentioned,
-  "titleCompany": string or null (legacy — also populate buyerTitleCompany when this is the buyer-side title company),
+  "titleCompany": string or null (legacy fallback only — prefer buyerTitleCompany or sellerTitleCompany when the side is known),
   "buyerTitleCompany": string or null (buyer-side title company name),
   "buyerTitleCloserName": string or null (buyer-side title closer / escrow officer name),
   "buyerTitleCloserEmail": string or null,
@@ -54,10 +54,16 @@ SUPPLEMENTAL SOURCES — CRITICAL:
 - Coordinator notes and screenshot images (email threads, signature blocks, business cards, intro emails, contact lists) are first-class sources for party contact information.
 - Extract EVERY email address, phone number, company name, and person name you can reliably match to a transaction role — even when that information is NOT on the purchase agreement.
 - Email screenshots often contain the other-side listing agent, seller's title closer, lender/loan officer, buyers, or sellers. Parse To/From/Cc lines, signatures, and body text.
-- Coordinator notes may paste contact info directly (e.g. "Listing agent: Jane Smith jane@broker.com 612-555-0100") — extract all of it.
+- Coordinator notes may paste contact info directly — extract all of it. Examples:
+  • "Seller's title: First American Title, closer Sarah Smith sarah@fa.com 612-555-0100" → sellerTitle* fields
+  • "Other side title company: ABC Escrow, John Doe john@abc.com" → sellerTitle* on buyer-side Team Steady deals, buyerTitle* on listing-side deals
+  • "Listing agent: Jane Smith jane@broker.com 612-555-0100" → listingAgent* fields
+- When notes mention title/escrow without specifying buyer vs seller, use sellerTitle* if Team Steady represents the buyer (the other side's title), or buyerTitle* if Team Steady represents the seller.
 - When the same person appears in multiple sources, prefer the most complete contact record.
 - buyerEmails/buyerPhones and sellerEmails/sellerPhones arrays must align by index with buyerNames/sellerNames when possible.
 - Title closer fields: populate buyer-side title in buyerTitle* fields and seller-side / other-side title in sellerTitle* fields.
+- When an email is from or about a Team Steady / Re/Max Results agent on this transaction sharing which title or escrow company they use, map it to THEIR side: buyer agent's title company → buyerTitle* fields; listing agent's title company → sellerTitle* fields.
+- Do not assume Watermark Title for any agent — extract exactly what the email states. Derek Jopp in particular may use different title companies on different deals.
 - Lender fields: extract from pre-approval letters when present AND from email screenshots or notes when they identify the loan officer for this transaction. Set hasPreApprovalLetter true only when a pre-approval/ pre-qualification letter document is actually included — not from a casual email mention alone.
 - Listing agent / buyer agent emails and phones often appear ONLY in supplemental emails — always check screenshots and notes for them.
 `;

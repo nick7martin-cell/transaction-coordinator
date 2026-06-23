@@ -6,6 +6,7 @@ import { makeParty, seedPartiesFromExtraction } from "@/lib/types";
 export const OTHER_SIDE_TITLE_UNKNOWN = "Unknown";
 
 const COLLIN_AGENT_ID = "collin-anderson";
+const DEREK_JOPP_AGENT_ID = "derek-jopp";
 const DEFAULT_TITLE_CONTACT_NAME = "Ingrid Bredeson";
 const COLLIN_TITLE_CONTACT_NAME = "Lacey Rentz";
 
@@ -26,10 +27,12 @@ export function findPreferredContactByName(
   return contacts.find((c) => norm(c.contact_name) === target);
 }
 
-export function resolveTitleContactNameForAgent(agentName: string | null): string {
-  return findAgentIdByName(agentName) === COLLIN_AGENT_ID
-    ? COLLIN_TITLE_CONTACT_NAME
-    : DEFAULT_TITLE_CONTACT_NAME;
+export function resolveTitleContactNameForAgent(agentName: string | null): string | null {
+  const agentId = findAgentIdByName(agentName);
+  if (agentId === COLLIN_AGENT_ID) return COLLIN_TITLE_CONTACT_NAME;
+  // Derek uses varying title companies — only seed from extraction or email screenshots.
+  if (agentId === DEREK_JOPP_AGENT_ID) return null;
+  return DEFAULT_TITLE_CONTACT_NAME;
 }
 
 /**
@@ -42,6 +45,81 @@ export function resolveTeamSteadySide(d: ExtractedData): "buyer" | "seller" {
   if (findAgentIdByName(d.buyerAgentName)) return "buyer";
   if (findAgentIdByName(d.listingAgentName)) return "seller";
   return "buyer";
+}
+
+export type TitleContactInfo = {
+  company: string;
+  name: string;
+  email: string;
+  phone: string;
+};
+
+export function hasTitleContactInfo(info: TitleContactInfo): boolean {
+  return !!(
+    info.company.trim() ||
+    info.name.trim() ||
+    info.email.trim() ||
+    info.phone.trim()
+  );
+}
+
+/** Map extracted title fields to a side, routing legacy titleCompany to the other side. */
+export function titleInfoForSide(
+  d: ExtractedData,
+  side: "buyer" | "seller"
+): TitleContactInfo {
+  const empty: TitleContactInfo = { company: "", name: "", email: "", phone: "" };
+
+  if (side === "buyer") {
+    const direct: TitleContactInfo = {
+      company: d.buyerTitleCompany ?? "",
+      name: d.buyerTitleCloserName ?? "",
+      email: d.buyerTitleCloserEmail ?? "",
+      phone: d.buyerTitleCloserPhone ?? "",
+    };
+    if (hasTitleContactInfo(direct)) return direct;
+  } else {
+    const direct: TitleContactInfo = {
+      company: d.sellerTitleCompany ?? "",
+      name: d.sellerTitleCloserName ?? "",
+      email: d.sellerTitleCloserEmail ?? "",
+      phone: d.sellerTitleCloserPhone ?? "",
+    };
+    if (hasTitleContactInfo(direct)) return direct;
+  }
+
+  const legacyCompany = d.titleCompany?.trim();
+  const hasSideSpecificCompany = !!(
+    d.buyerTitleCompany?.trim() || d.sellerTitleCompany?.trim()
+  );
+  if (!legacyCompany || hasSideSpecificCompany) return empty;
+
+  const ourSide = resolveTeamSteadySide(d);
+  const otherSide: "buyer" | "seller" = ourSide === "buyer" ? "seller" : "buyer";
+  if (side !== otherSide) return empty;
+
+  return {
+    company: legacyCompany,
+    name: (d.sellerTitleCloserName ?? d.buyerTitleCloserName ?? "").trim(),
+    email: (d.sellerTitleCloserEmail ?? d.buyerTitleCloserEmail ?? "").trim(),
+    phone: (d.sellerTitleCloserPhone ?? d.buyerTitleCloserPhone ?? "").trim(),
+  };
+}
+
+function titlePartyFromExtraction(
+  d: ExtractedData,
+  side: "buyer" | "seller"
+): TransactionParty | null {
+  const info = titleInfoForSide(d, side);
+  if (!hasTitleContactInfo(info)) return null;
+  const role = side === "buyer" ? "buyer_title" : "seller_title";
+  return makeParty({
+    role,
+    name: info.name,
+    company: info.company,
+    email: info.email,
+    phone: info.phone,
+  });
 }
 
 export function contactToParty(
@@ -133,12 +211,25 @@ function ourSideTitleParty(
   d: ExtractedData,
   contacts: Contact[],
   side: "buyer" | "seller"
-): TransactionParty | null {
+): TransactionParty {
+  const role = side === "buyer" ? "buyer_title" : "seller_title";
+  const fromExtraction = titlePartyFromExtraction(d, side);
+  if (fromExtraction) return fromExtraction;
+
   const agentName = side === "buyer" ? d.buyerAgentName : d.listingAgentName;
   const titleContactName = resolveTitleContactNameForAgent(agentName);
-  const titleContact = findPreferredContactByName(contacts, titleContactName);
-  const role = side === "buyer" ? "buyer_title" : "seller_title";
-  return titleContact ? contactToParty(titleContact, role) : null;
+  if (titleContactName) {
+    const titleContact = findPreferredContactByName(contacts, titleContactName);
+    if (titleContact) return contactToParty(titleContact, role);
+  }
+
+  return makeParty({
+    role,
+    name: "",
+    company: OTHER_SIDE_TITLE_UNKNOWN,
+    email: "",
+    phone: "",
+  });
 }
 
 /** Build the full initial parties roster for a newly created transaction. */
@@ -156,14 +247,29 @@ export function buildInitialParties(
   if (d.dualAgency || bothSidesTeamSteady) {
     const agentName = d.buyerAgentName ?? d.listingAgentName;
     const titleContactName = resolveTitleContactNameForAgent(agentName);
-    const titleContact = findPreferredContactByName(contacts, titleContactName);
 
-    if (titleContact) {
-      if (!parties.some((p) => p.role === "buyer_title")) {
-        parties.push(contactToParty(titleContact, "buyer_title"));
+    if (titleContactName) {
+      const titleContact = findPreferredContactByName(contacts, titleContactName);
+
+      if (titleContact) {
+        if (!parties.some((p) => p.role === "buyer_title")) {
+          parties.push(contactToParty(titleContact, "buyer_title"));
+        }
+        if (!parties.some((p) => p.role === "seller_title")) {
+          parties.push(contactToParty(titleContact, "seller_title"));
+        }
       }
-      if (!parties.some((p) => p.role === "seller_title")) {
-        parties.push(contactToParty(titleContact, "seller_title"));
+    } else {
+      const ourSide = resolveTeamSteadySide(d);
+      const otherSide = ourSide === "buyer" ? "seller" : "buyer";
+      const ourTitleRole = ourSide === "buyer" ? "buyer_title" : "seller_title";
+      const otherTitleRole = otherSide === "buyer" ? "buyer_title" : "seller_title";
+
+      if (!parties.some((p) => p.role === ourTitleRole)) {
+        parties.push(ourSideTitleParty(d, contacts, ourSide));
+      }
+      if (!parties.some((p) => p.role === otherTitleRole)) {
+        parties.push(otherSideTitleParty(ourSide));
       }
     }
   } else {
@@ -173,8 +279,7 @@ export function buildInitialParties(
     const otherTitleRole = otherSide === "buyer" ? "buyer_title"  : "seller_title";
 
     if (!parties.some((p) => p.role === ourTitleRole)) {
-      const titleParty = ourSideTitleParty(d, contacts, ourSide);
-      if (titleParty) parties.push(titleParty);
+      parties.push(ourSideTitleParty(d, contacts, ourSide));
     }
     if (!parties.some((p) => p.role === otherTitleRole)) {
       parties.push(otherSideTitleParty(ourSide));

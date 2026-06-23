@@ -313,9 +313,7 @@ export function coerceExtractedData(
     dualAgency:                           Boolean(r.dualAgency ?? r.dual_agency),
     contingencies:                        arr("contingencies"),
     titleCompany:                         str("titleCompany", "title_company"),
-    buyerTitleCompany:
-      str("buyerTitleCompany", "buyer_title_company") ??
-      str("titleCompany", "title_company"),
+    buyerTitleCompany: str("buyerTitleCompany", "buyer_title_company"),
     buyerTitleCloserName:                 str("buyerTitleCloserName", "buyer_title_closer_name"),
     buyerTitleCloserEmail:                str("buyerTitleCloserEmail", "buyer_title_closer_email"),
     buyerTitleCloserPhone:                str("buyerTitleCloserPhone", "buyer_title_closer_phone"),
