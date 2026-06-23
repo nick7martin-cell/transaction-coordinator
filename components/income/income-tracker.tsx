@@ -265,6 +265,22 @@ function StatPill({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function forecastDealHint(summary: IncomeSummary): string {
+  const extra = Math.round(summary.runRateDealCount);
+  if (extra <= 0) {
+    return `Based on ${summary.projectedTeamDealCount} known deals and base pay`;
+  }
+  return `~${extra} unscheduled deals at ${summary.dealsPerMonth.toFixed(1)}/mo pace (${summary.projectedTeamDealCount} total)`;
+}
+
+function yearTotalHint(summary: IncomeSummary): string {
+  const personal =
+    summary.projectedPersonalIncome > 0
+      ? ` + ${formatCurrency(summary.projectedPersonalIncome)} from your deals on the books`
+      : "";
+  return `Projected team income${personal}`;
+}
+
 function TeamOverviewBar({ summary }: { summary: IncomeSummary }) {
   return (
     <div className="rounded-[20px] border border-line bg-surface px-4 py-3 sm:px-5 shadow-card">
@@ -277,7 +293,9 @@ function TeamOverviewBar({ summary }: { summary: IncomeSummary }) {
           <span className="hidden sm:inline text-ink-mute/40">·</span>
           <StatPill label="Pending" value={summary.teamDealsPending} />
           <span className="hidden sm:inline text-ink-mute/40">·</span>
-          <StatPill label="Total" value={summary.teamDealsTotal} />
+          <StatPill label="Known" value={summary.teamDealsTotal} />
+          <span className="hidden sm:inline text-ink-mute/40">·</span>
+          <StatPill label="Forecast" value={summary.projectedTeamDealCount} />
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:border-l sm:border-line sm:pl-6">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-mute shrink-0">
@@ -289,8 +307,9 @@ function TeamOverviewBar({ summary }: { summary: IncomeSummary }) {
         </div>
       </div>
       <p className="mt-2 text-[11px] text-ink-mute leading-relaxed">
-        Team income excludes your agent commission — your deals count as $50 each. Dual-side
-        closings count as 2 deals.
+        Team income = $50 per deal side (dual-side = $100) + $5,000 base pay each month
+        ($60,000/yr). Your personal agent commission is excluded from team income.
+        Projected: {forecastDealHint(summary)}.
       </p>
     </div>
   );
@@ -598,7 +617,7 @@ export function IncomeTrackerView() {
             <SummaryCard
               label="Projected year total"
               value={formatCurrency(summary.projectedYearTotal)}
-              hint="Closed deals, scheduled closings, and base pay (Jun–Dec)"
+              hint={yearTotalHint(summary)}
             />
           </div>
 
@@ -653,21 +672,33 @@ export function IncomeTrackerView() {
                 </div>
                 <dl className="space-y-3 text-sm">
                   <div className="flex justify-between gap-3">
+                    <dt className="text-ink-soft">Projected team income</dt>
+                    <dd className="font-medium text-ink tabular-nums">
+                      {formatCurrency(summary.teamIncomeProjected)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-soft">Your deals (on books)</dt>
+                    <dd className="font-medium text-ink tabular-nums">
+                      {formatCurrency(summary.projectedPersonalIncome)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
                     <dt className="text-ink-soft">Awaiting payment</dt>
                     <dd className="font-medium text-ink tabular-nums">
                       {formatCurrency(summary.awaitingPaymentAmount)}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <dt className="text-ink-soft">Pipeline (known)</dt>
+                    <dt className="text-ink-soft">Team booked (no forecast)</dt>
                     <dd className="font-medium text-ink tabular-nums">
-                      {formatCurrency(summary.projectedFromPipeline)}
+                      {formatCurrency(summary.teamIncomeFromKnown)}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <dt className="text-ink-soft">Run-rate upside</dt>
+                    <dt className="text-ink-soft">Team forecast add-on</dt>
                     <dd className="font-medium text-ink tabular-nums">
-                      {formatCurrency(summary.projectedFromRunRate)}
+                      {formatCurrency(summary.projectedTeamFromRunRate)}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
@@ -684,9 +715,9 @@ export function IncomeTrackerView() {
                   </div>
                 </dl>
                 <p className="mt-4 text-xs text-ink-mute leading-relaxed">
-                  Avg payout per deal: ($50 × closings + $5,000) ÷ closings each month,
-                  weighted across the year. Run-rate upside is extra if pace continues —
-                  not added to the projected year total above.
+                  Projected year total = projected team income (YTD pace at $50/side +
+                  $5k/mo base) plus your personal deals already on the tracker — no
+                  forecast of additional personal deals.
                 </p>
               </div>
 

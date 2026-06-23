@@ -60,8 +60,17 @@ export interface IncomeSummary {
   pipelineAmount: number;
   pipelineCount: number;
   projectedYearTotal: number;
+  /** Your agent deals already on the tracker (closed + pending) — not forecasted. */
+  projectedPersonalIncome: number;
+  /** Team + personal deals on the books (no run-rate). */
+  projectedFromKnown: number;
   projectedFromPipeline: number;
+  /** Unscheduled team deals at YTD pace (included in projectedTeamIncome). */
   projectedFromRunRate: number;
+  projectedTeamFromRunRate: number;
+  /** Expected team deal count by year-end (known + forecast). */
+  projectedDealCount: number;
+  runRateDealCount: number;
   /** ($50 × deals + $5,000 base pay) ÷ deals, weighted across the year. */
   avgPayoutPerDeal: number;
   dealsPerMonth: number;
@@ -72,8 +81,12 @@ export interface IncomeSummary {
   teamDealsTotal: number;
   /** Team income through today — base pay + deal fees; Nick deals count as $50 each. */
   teamIncomeClosed: number;
-  /** Team income for the full year — closed + pending deals + base pay. */
+  /** Team income for the full year — forecast incl. run-rate at YTD pace. */
   teamIncomeProjected: number;
+  /** Team income from known deals + base pay only. */
+  teamIncomeFromKnown: number;
+  /** Expected team deal count by year-end (known + forecast). */
+  projectedTeamDealCount: number;
 }
 
 function monthKeyFromDate(isoDate: string): string {
@@ -369,10 +382,6 @@ export function computeIncomeSummary(
 
   const ytdRows = yearRows.filter(countsTowardYtd);
 
-  const basePayThroughCurrent = ytdRows
-    .filter((r) => r.isBasePay)
-    .reduce((s, r) => s + r.amount, 0);
-
   const basePayFullYear = baseRows.reduce((s, r) => s + r.amount, 0);
 
   const ytdPaid = ytdRows
@@ -395,30 +404,20 @@ export function computeIncomeSummary(
 
   const monthsElapsed =
     year < today.getFullYear() ? 12 : year > today.getFullYear() ? 0 : currentMonth;
-  const dealsPerMonth = monthsElapsed > 0 ? closedDeals.length / monthsElapsed : 0;
+  const closedCredits = closedDeals.reduce(
+    (s, r) => s + agentDealCredit(r.agentLabel),
+    0
+  );
+  const dealsPerMonth = monthsElapsed > 0 ? closedCredits / monthsElapsed : 0;
 
-  const monthsRemaining =
-    year < today.getFullYear() ? 0 : year > today.getFullYear() ? 12 : 12 - currentMonth;
-
-  const basePayRemaining =
-    year < today.getFullYear()
-      ? 0
-      : baseRows
-          .filter((r) => {
-            const m = parseInt(r.monthKey.split("-")[1] ?? "0", 10);
-            return m > currentMonth;
-          })
-          .reduce((s, r) => s + r.amount, 0);
-
-  const projectedFromRunRate =
-    monthsRemaining > 0 ? dealsPerMonth * monthsRemaining * avgPayoutPerDeal : 0;
-
-  const projectedFromPipeline = pipelineAmount;
-
-  const closedDealAmount = closedDeals.reduce((s, r) => s + r.amount, 0);
-
-  /** Known year total — no run-rate double-count on top of scheduled closings. */
-  const projectedYearTotal = closedDealAmount + pipelineAmount + basePayFullYear;
+  const forecast = computeYearEndForecast(
+    year,
+    today,
+    closedDeals,
+    pendingDeals,
+    basePayFullYear,
+    dealsPerMonth
+  );
 
   const agentMap = new Map<string, AgentDealCount>();
   for (const row of dealRows) {
@@ -448,11 +447,9 @@ export function computeIncomeSummary(
   );
   const teamDealsTotal = teamDealsClosed + teamDealsPending;
 
-  const teamIncomeClosed = ytdRows.reduce((s, r) => s + teamDealPayout(r), 0);
-  const teamIncomeProjected =
-    closedDeals.reduce((s, r) => s + teamDealPayout(r), 0) +
-    pendingDeals.reduce((s, r) => s + teamDealPayout(r), 0) +
-    basePayFullYear;
+  const ytdDealRows = ytdRows.filter((r) => !r.isBasePay);
+  const teamIncomeClosed =
+    teamFeesFromRows(ytdDealRows) + teamBasePayYtd(year, today);
 
   return {
     year,
@@ -461,9 +458,14 @@ export function computeIncomeSummary(
     awaitingPaymentCount,
     pipelineAmount,
     pipelineCount,
-    projectedYearTotal,
-    projectedFromPipeline,
-    projectedFromRunRate,
+    projectedYearTotal: forecast.projectedYearTotal,
+    projectedPersonalIncome: forecast.projectedPersonalIncome,
+    projectedFromKnown: forecast.projectedFromKnown,
+    projectedFromPipeline: pipelineAmount,
+    projectedFromRunRate: forecast.projectedFromRunRate,
+    projectedTeamFromRunRate: forecast.projectedTeamFromRunRate,
+    projectedDealCount: forecast.projectedDealCount,
+    runRateDealCount: forecast.runRateDealCount,
     avgPayoutPerDeal,
     dealsPerMonth,
     agentCounts,
@@ -471,15 +473,145 @@ export function computeIncomeSummary(
     teamDealsPending,
     teamDealsTotal,
     teamIncomeClosed,
-    teamIncomeProjected,
+    teamIncomeProjected: forecast.projectedTeamIncome,
+    teamIncomeFromKnown: forecast.projectedTeamFromKnown,
+    projectedTeamDealCount: forecast.projectedTeamDealCount,
   };
 }
 
-/** Income attributed to the team — Nick's deals count as $50 per side only. */
-export function teamDealPayout(row: IncomeRow): number {
-  if (row.isBasePay) return row.amount;
-  if (row.isNickDeal) return agentDealCredit(row.agentLabel) * STANDARD_TC_FEE;
-  return row.amount;
+/** Coordinator fee credited to team income — $50 per side (dual = $100). */
+export function teamCoordinatorFee(row: IncomeRow): number {
+  if (row.isBasePay) return 0;
+  return agentDealCredit(row.agentLabel) * STANDARD_TC_FEE;
+}
+
+/** Base pay in the team-income model — $5,000 every month of the year. */
+export function teamBasePayAnnual(): number {
+  return BASE_PAY_AMOUNT * 12;
+}
+
+export function teamBasePayYtd(year: number, today: Date): number {
+  const currentYear = today.getFullYear();
+  if (year < currentYear) return teamBasePayAnnual();
+  if (year > currentYear) return 0;
+  return BASE_PAY_AMOUNT * (today.getMonth() + 1);
+}
+
+function teamFeesFromRows(rows: IncomeRow[]): number {
+  return sumDealCredits(rows.filter((r) => !r.isBasePay)) * STANDARD_TC_FEE;
+}
+
+function sumDealCredits(rows: IncomeRow[]): number {
+  return rows.reduce((s, r) => s + agentDealCredit(r.agentLabel), 0);
+}
+
+export interface YearEndForecast {
+  projectedYearTotal: number;
+  projectedPersonalIncome: number;
+  projectedTeamIncome: number;
+  projectedFromKnown: number;
+  projectedTeamFromKnown: number;
+  projectedFromRunRate: number;
+  projectedTeamFromRunRate: number;
+  projectedDealCount: number;
+  projectedTeamDealCount: number;
+  runRateDealCount: number;
+}
+
+function existingPersonalDealIncome(rows: IncomeRow[]): number {
+  return rows
+    .filter((r) => !r.isBasePay && r.isNickDeal)
+    .reduce((s, r) => s + r.amount, 0);
+}
+
+/**
+ * Year-end forecast: team income at YTD pace ($50/side + $5k/mo base), plus your
+ * personal deals already on the tracker (no forecast of future personal deals).
+ */
+export function computeYearEndForecast(
+  year: number,
+  today: Date,
+  closedDeals: IncomeRow[],
+  pendingDeals: IncomeRow[],
+  _basePayFullYear: number,
+  dealsPerMonth: number
+): YearEndForecast {
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+
+  const closedCredits = sumDealCredits(closedDeals);
+  const pendingCredits = sumDealCredits(pendingDeals);
+  const knownDeals = [...closedDeals, ...pendingDeals];
+  const personalIncome = existingPersonalDealIncome(knownDeals);
+
+  const teamBasePay = teamBasePayAnnual();
+  const closedTeamFees = teamFeesFromRows(closedDeals);
+  const pipelineTeamFees = teamFeesFromRows(pendingDeals);
+
+  const projectedTeamFromKnown = closedTeamFees + pipelineTeamFees + teamBasePay;
+  const projectedFromKnown = projectedTeamFromKnown + personalIncome;
+
+  if (year < currentYear) {
+    const knownCount = closedCredits + pendingCredits;
+    return {
+      projectedYearTotal: projectedFromKnown,
+      projectedPersonalIncome: personalIncome,
+      projectedTeamIncome: projectedTeamFromKnown,
+      projectedFromKnown,
+      projectedTeamFromKnown,
+      projectedFromRunRate: 0,
+      projectedTeamFromRunRate: 0,
+      projectedDealCount: knownCount,
+      projectedTeamDealCount: knownCount,
+      runRateDealCount: 0,
+    };
+  }
+
+  const pendingCreditsByMonth = new Map<number, number>();
+  for (const row of pendingDeals) {
+    const m = parseInt(row.monthKey.split("-")[1] ?? "0", 10);
+    pendingCreditsByMonth.set(
+      m,
+      (pendingCreditsByMonth.get(m) ?? 0) + agentDealCredit(row.agentLabel)
+    );
+  }
+
+  let runRateTeam = 0;
+  let runRateCredits = 0;
+
+  const startMonth = year > currentYear ? 1 : currentMonth;
+
+  for (let m = startMonth; m <= 12; m++) {
+    let knownCredits = pendingCreditsByMonth.get(m) ?? 0;
+
+    if (year === currentYear && m === currentMonth) {
+      const closedThisMonth = closedDeals.filter(
+        (r) => parseInt(r.monthKey.split("-")[1] ?? "0", 10) === m
+      );
+      knownCredits += sumDealCredits(closedThisMonth);
+    }
+
+    const gapCredits = Math.max(0, dealsPerMonth - knownCredits);
+    runRateCredits += gapCredits;
+    runRateTeam += gapCredits * STANDARD_TC_FEE;
+  }
+
+  const knownCount = closedCredits + pendingCredits;
+  const forecastDealCount = Math.round(knownCount + runRateCredits);
+  const projectedTeamIncome = forecastDealCount * STANDARD_TC_FEE + teamBasePay;
+
+  return {
+    projectedYearTotal: projectedTeamIncome + personalIncome,
+    projectedPersonalIncome: personalIncome,
+    projectedTeamIncome,
+    projectedFromKnown,
+    projectedTeamFromKnown,
+    projectedFromRunRate: runRateTeam,
+    projectedTeamFromRunRate: runRateTeam,
+    projectedDealCount: forecastDealCount,
+    projectedTeamDealCount: forecastDealCount,
+    runRateDealCount: runRateCredits,
+  };
 }
 
 /**
