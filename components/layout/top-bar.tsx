@@ -14,8 +14,8 @@ export function TopBar({
   searchValue = "",
 }: TopBarProps) {
   return (
-    <header className="flex h-16 shrink-0 items-center gap-4 px-6 md:px-8">
-      <div className="relative max-w-sm w-full">
+    <header className="flex h-16 shrink-0 items-center gap-3 px-4 md:gap-4 md:px-6 xl:px-8 min-w-0">
+      <div className="relative min-w-0 flex-1 max-w-full xl:max-w-sm">
         <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" />
         <input
           type="search"
