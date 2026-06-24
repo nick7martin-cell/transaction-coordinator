@@ -24,22 +24,30 @@ function projectRefFromSupabaseKey(key: string): string | null {
 }
 
 function createSupabaseClient(): SupabaseClient {
-  const supabaseUrl = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
-
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase credentials");
+  if (typeof window !== "undefined") {
+    throw new Error("Supabase client is server-only");
   }
 
-  const urlRef = projectRefFromSupabaseUrl(supabaseUrl);
-  const keyRef = projectRefFromSupabaseKey(supabaseKey);
-  if (urlRef && keyRef && urlRef !== keyRef) {
+  const supabaseUrl = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
+
+  if (!supabaseUrl || !serviceRoleKey) {
     throw new Error(
-      `Supabase project mismatch: NEXT_PUBLIC_SUPABASE_URL is for "${urlRef}" but NEXT_PUBLIC_SUPABASE_ANON_KEY is for "${keyRef}". Re-copy the anon/publishable key from that project's Supabase dashboard (Settings → API).`
+      "Missing Supabase credentials — set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
     );
   }
 
-  return createClient(supabaseUrl, supabaseKey);
+  const urlRef = projectRefFromSupabaseUrl(supabaseUrl);
+  const keyRef = projectRefFromSupabaseKey(serviceRoleKey);
+  if (urlRef && keyRef && urlRef !== keyRef) {
+    throw new Error(
+      `Supabase project mismatch: NEXT_PUBLIC_SUPABASE_URL is for "${urlRef}" but SUPABASE_SERVICE_ROLE_KEY is for "${keyRef}". Re-copy keys from Supabase → Settings → API.`
+    );
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 let client: SupabaseClient | undefined;
@@ -49,7 +57,7 @@ function getSupabase(): SupabaseClient {
   return client;
 }
 
-/** Lazy singleton so env is read at request time, not during `next build`. */
+/** Lazy server-side singleton (service role — never import from client components). */
 export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
   get(_target, prop, receiver) {
     const instance = getSupabase();

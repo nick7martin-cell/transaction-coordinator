@@ -7,9 +7,9 @@ CREATE TABLE IF NOT EXISTS income_tracker (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE income_tracker DISABLE ROW LEVEL SECURITY;
+ALTER TABLE income_tracker ENABLE ROW LEVEL SECURITY;
 
-GRANT ALL ON TABLE income_tracker TO anon, authenticated, service_role;
+GRANT ALL ON TABLE income_tracker TO service_role;
 
 INSERT INTO income_tracker (id, paid_keys)
 VALUES ('default', '[]'::jsonb)

@@ -11,9 +11,10 @@ CREATE TABLE IF NOT EXISTS contacts (
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
--- This is an internal tool with no per-user auth.  Disable RLS so the anon
--- key can read/write freely.  Without this Supabase silently returns 0 rows.
-ALTER TABLE contacts DISABLE ROW LEVEL SECURITY;
+-- Internal tool: RLS enabled with no public policies. The Next.js app uses
+-- SUPABASE_SERVICE_ROLE_KEY on the server (bypasses RLS). Run
+-- supabase-enable-rls.sql on existing databases that still have RLS disabled.
+ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 
 -- ── Transactions table ────────────────────────────────────────────────────────
 -- Core transaction fields (live Supabase schema). Shares the same UUID as the
@@ -34,7 +35,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at               TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE transactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
 -- ── Extractions table ─────────────────────────────────────────────────────────
 -- Full extraction payload (JSON) retained for audit / re-processing.
@@ -50,7 +51,7 @@ CREATE TABLE IF NOT EXISTS extractions (
   created_at         TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE extractions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE extractions ENABLE ROW LEVEL SECURITY;
 
 -- Migration for existing databases (safe to re-run):
 -- IMPORTANT: Status actions (Mark as Cancelled / Closed) require these columns.
@@ -71,7 +72,7 @@ CREATE TABLE IF NOT EXISTS transaction_meta (
   updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE transaction_meta DISABLE ROW LEVEL SECURITY;
+ALTER TABLE transaction_meta ENABLE ROW LEVEL SECURITY;
 
 -- Add seller's title company column (run once; safe to re-run)
 ALTER TABLE transaction_meta
@@ -90,11 +91,10 @@ CREATE TABLE IF NOT EXISTS income_tracker (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE income_tracker DISABLE ROW LEVEL SECURITY;
+ALTER TABLE income_tracker ENABLE ROW LEVEL SECURITY;
 
--- Required for the anon key (PostgREST). Without these grants you get
--- "permission denied for table income_tracker".
-GRANT ALL ON TABLE income_tracker TO anon, authenticated, service_role;
+-- Server-side only (service role). Anon key has no RLS policies.
+GRANT ALL ON TABLE income_tracker TO service_role;
 
 INSERT INTO income_tracker (id, paid_keys)
 VALUES ('default', '[]'::jsonb)
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS gmail_integration (
   updated_at               TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE gmail_integration DISABLE ROW LEVEL SECURITY;
+ALTER TABLE gmail_integration ENABLE ROW LEVEL SECURITY;
 
 -- ── Worksheets storage bucket ────────────────────────────────────────────────
 -- Private bucket for generated closing-worksheet PDFs (server-side upload only).
