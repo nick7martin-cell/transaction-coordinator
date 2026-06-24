@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { TopBar } from "@/components/layout/top-bar";
 import { TransactionCard } from "@/components/transactions/transaction-card";
+import { PropertyAddressLabel } from "@/components/transactions/property-address-label";
 import { UploadZone } from "@/components/upload/upload-zone";
 import { PropertyImage } from "@/components/ui/property-image";
 import {
@@ -347,7 +348,6 @@ export default function TransactionsPage() {
               {filtered.map((transaction, index) => {
                 const data = coerceExtractedData(transaction.extracted_data);
                 const days = daysUntilClosing(data.closingDate);
-                const address = data.propertyAddress || "Address pending";
                 const seed = data.propertyAddress || transaction.id;
                 const imageSrc = propertyImageSrc(
                   transaction.propertyPhotoUrl,
@@ -371,9 +371,11 @@ export default function TransactionsPage() {
                       className="h-12 w-12 shrink-0 rounded-lg"
                       iconSize={18}
                     />
-                    <p className="min-w-0 text-sm font-semibold text-ink truncate">
-                      {address}
-                    </p>
+                    <PropertyAddressLabel
+                      address={data.propertyAddress}
+                      streetClassName="text-sm"
+                      cityClassName="text-xs"
+                    />
                     <p className="min-w-0 text-sm text-ink-soft truncate">
                       {transaction.teamSteadyAgentName ?? ""}
                     </p>

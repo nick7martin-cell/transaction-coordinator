@@ -24,15 +24,15 @@ export function Sidebar() {
     <aside
       className={cn(
         "flex shrink-0 flex-col border-r border-line bg-rail transition-[width] duration-200 ease-out",
-        "w-[72px] xl:w-[232px]"
+        "w-[68px] xl:w-[216px]"
       )}
     >
       {/* Brand */}
-      <div className="flex items-center justify-center px-3 pt-6 pb-6 xl:justify-start xl:px-5">
+      <div className="flex items-center justify-center px-2.5 pt-5 pb-5 xl:justify-start xl:px-4">
         <img
           src="/handled-logo.png"
           alt="Handled"
-          className="block h-8 w-8 object-contain object-left xl:h-9 xl:w-auto"
+          className="block h-7 w-7 object-contain object-left xl:h-8 xl:w-auto"
         />
       </div>
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { PropertyImage } from "@/components/ui/property-image";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { PropertyAddressLabel } from "@/components/transactions/property-address-label";
 import {
   daysUntilClosing,
   formatCurrency,
@@ -28,7 +29,6 @@ export function TransactionCard({
   const days = daysUntilClosing(data.closingDate);
   const status = getTransactionStatus(transaction);
   const seed = data.propertyAddress || transaction.id;
-  const address = data.propertyAddress || "Address pending";
   const imageSrc = propertyImageSrc(transaction.propertyPhotoUrl, data.propertyAddress, "600x400");
 
   const daysLabel =
@@ -52,9 +52,11 @@ export function TransactionCard({
 
       {/* Body */}
       <div className="flex flex-1 flex-col p-5">
-        <h3 className="text-[16px] font-semibold text-ink leading-snug line-clamp-1">
-          {address}
-        </h3>
+        <PropertyAddressLabel
+          address={data.propertyAddress}
+          streetClassName="text-[16px]"
+          cityClassName="text-[13px]"
+        />
         {agentName ? (
           <p className="mt-0.5 text-[13px] text-ink-mute">{agentName}</p>
         ) : null}

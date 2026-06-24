@@ -78,11 +78,13 @@ function PaidToggle({
   disabled,
   onToggle,
   compact = false,
+  className,
 }: {
   paid: boolean;
   disabled?: boolean;
   onToggle: () => void;
   compact?: boolean;
+  className?: string;
 }) {
   if (compact) {
     return (
@@ -94,7 +96,8 @@ function PaidToggle({
           "inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors disabled:opacity-50",
           paid
             ? "text-good-ink hover:bg-good/20"
-            : "text-ink-mute hover:text-ink hover:bg-line/40"
+            : "text-ink-mute hover:text-ink hover:bg-line/40",
+          className
         )}
       >
         {paid ? <Check className="h-3 w-3" /> : null}
@@ -112,7 +115,8 @@ function PaidToggle({
         "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 h-9 text-xs font-semibold transition-colors disabled:opacity-50",
         paid
           ? "bg-good text-good-ink hover:bg-good/80"
-          : "bg-warn/80 text-warn-ink hover:bg-warn"
+          : "bg-warn/80 text-warn-ink hover:bg-warn",
+        className
       )}
     >
       {paid ? <Check className="h-3.5 w-3.5" /> : null}
@@ -131,7 +135,7 @@ function BasePayStrip({
   onTogglePaid: (id: string, paid: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-line/40 px-5 py-2">
+    <div className="flex items-center justify-between gap-4 border-t border-line/40 px-4 py-2 xl:px-5">
       <p className="text-[11px] text-ink-mute">
         <span className="font-medium uppercase tracking-wider">Base pay</span>
         <span className="mx-2 text-ink-mute/30">·</span>
@@ -147,29 +151,179 @@ function BasePayStrip({
   );
 }
 
-function DealAddress({
-  row,
-}: {
-  row: IncomeRow;
-}) {
+function DealAddress({ row }: { row: IncomeRow }) {
+  const className =
+    "block min-w-0 truncate font-medium text-ink hover:text-brand transition-colors";
   return (
-    <>
+    <div className="flex min-w-0 items-baseline gap-2 overflow-hidden">
       {row.transactionId ? (
-        <Link
-          href={`/transactions/${row.transactionId}`}
-          className="font-medium text-ink hover:text-brand transition-colors break-words"
-        >
+        <Link href={`/transactions/${row.transactionId}`} className={className} title={row.address}>
           {row.address}
         </Link>
       ) : (
-        <span className="font-medium text-ink break-words">{row.address}</span>
+        <span className={className} title={row.address}>
+          {row.address}
+        </span>
       )}
       {row.isNickDeal ? (
-        <span className="ml-2 text-[10px] font-semibold uppercase text-ink-mute">
+        <span className="shrink-0 text-[10px] font-semibold uppercase text-ink-mute">
           Your deal
         </span>
       ) : null}
-    </>
+    </div>
+  );
+}
+
+function DealPropertyCell({ row }: { row: IncomeRow }) {
+  return (
+    <div className="min-w-0 overflow-hidden">
+      <DealAddress row={row} />
+    </div>
+  );
+}
+
+/** Shared gap + proportional middle columns (property : agent ≈ 2.2 : 1.3). */
+function dealTableGrid(showMonth: boolean) {
+  return cn(
+    "grid items-center gap-x-[clamp(0.625rem,1.25vw,1rem)]",
+    showMonth
+      ? "grid-cols-[6.75rem_3.25rem_minmax(0,2.2fr)_minmax(0,1.3fr)_5.5rem_minmax(6.75rem,auto)]"
+      : "grid-cols-[6.75rem_minmax(0,2.2fr)_minmax(0,1.3fr)_5.5rem_minmax(6.75rem,auto)]"
+  );
+}
+
+function DealAgentCell({ row }: { row: IncomeRow }) {
+  return (
+    <span className="block min-w-0 truncate text-sm text-ink-soft" title={row.agentLabel}>
+      {row.agentLabel}
+      {row.agentLabel.includes("Dual Side") ? (
+        <span className="ml-1.5 text-[10px] font-semibold uppercase text-ink-mute">
+          Both
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function DealGridRow({
+  row,
+  togglingId,
+  onTogglePaid,
+  showMonth,
+}: {
+  row: IncomeRow;
+  togglingId: string | null;
+  onTogglePaid: (id: string, paid: boolean) => void;
+  showMonth: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        dealTableGrid(showMonth),
+        "border-b border-line/60 px-4 py-3 last:border-0 xl:px-5",
+        row.paid ? "bg-good/15" : "bg-warn/10"
+      )}
+    >
+      <time
+        dateTime={row.closeDate}
+        className="text-sm tabular-nums text-ink-soft whitespace-nowrap"
+      >
+        {formatDate(row.closeDate)}
+      </time>
+      {showMonth ? (
+        <span className="text-sm text-ink-soft whitespace-nowrap">
+          {formatMonthLabel(row.monthKey).replace(/ \d{4}$/, "")}
+        </span>
+      ) : null}
+      <DealPropertyCell row={row} />
+      <DealAgentCell row={row} />
+      <div className="text-right text-sm font-semibold tabular-nums whitespace-nowrap">
+        <span className={row.amount === 0 ? "text-ink-mute" : "text-ink"}>
+          {formatCurrency(row.amount)}
+        </span>
+        {row.amount === 0 ? (
+          <span className="block text-[10px] font-medium text-ink-mute">No payout</span>
+        ) : null}
+      </div>
+      <div className="flex justify-end">
+        <PaidToggle
+          paid={row.paid}
+          disabled={togglingId === row.id}
+          onToggle={() => onTogglePaid(row.id, !row.paid)}
+          compact
+          className="xl:hidden"
+        />
+        <PaidToggle
+          paid={row.paid}
+          disabled={togglingId === row.id}
+          onToggle={() => onTogglePaid(row.id, !row.paid)}
+          className="hidden xl:inline-flex"
+        />
+      </div>
+    </div>
+  );
+}
+
+function DealGridHeader({ showMonth }: { showMonth: boolean }) {
+  return (
+    <div
+      className={cn(
+        dealTableGrid(showMonth),
+        "border-b border-line px-4 py-2.5 xl:px-5",
+        "text-[11px] font-semibold uppercase tracking-wider text-ink-mute"
+      )}
+    >
+      <span>Close</span>
+      {showMonth ? <span>Month</span> : null}
+      <span>Property</span>
+      <span>Agent</span>
+      <span className="text-right">Payout</span>
+      <span className="text-right">Status</span>
+    </div>
+  );
+}
+
+function DealGridList({
+  rows,
+  togglingId,
+  onTogglePaid,
+  showMonth = false,
+  dealCount,
+  total,
+  basePayAmount,
+}: {
+  rows: IncomeRow[];
+  togglingId: string | null;
+  onTogglePaid: (id: string, paid: boolean) => void;
+  showMonth?: boolean;
+  dealCount: number;
+  total: number;
+  basePayAmount: number;
+}) {
+  return (
+    <div className="hidden lg:block min-w-0">
+      <DealGridHeader showMonth={showMonth} />
+
+      {rows.map((row) => (
+        <DealGridRow
+          key={row.id}
+          row={row}
+          togglingId={togglingId}
+          onTogglePaid={onTogglePaid}
+          showMonth={showMonth}
+        />
+      ))}
+
+      <div className="flex items-center justify-between gap-4 border-t border-line/40 bg-canvas/80 px-4 py-3 text-sm xl:px-5">
+        <span className="font-normal text-ink-soft">
+          {dealCount} transaction{dealCount === 1 ? "" : "s"}
+          {basePayAmount > 0 ? (
+            <span className="text-ink-mute"> · incl. base pay</span>
+          ) : null}
+        </span>
+        <span className="font-semibold tabular-nums text-ink">{formatCurrency(total)}</span>
+      </div>
+    </div>
   );
 }
 
@@ -190,36 +344,37 @@ function DealCardList({
         <li
           key={row.id}
           className={cn(
-            "px-4 py-4 space-y-3",
+            "px-4 py-3.5",
             row.paid ? "bg-good/15" : "bg-warn/10"
           )}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
+          <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start gap-x-[clamp(0.75rem,3vw,1.25rem)]">
+            <div className="min-w-0 space-y-1">
               <DealAddress row={row} />
-              <p className="mt-1 text-xs text-ink-soft">
+              <p className="truncate text-xs text-ink-soft">
                 {formatDate(row.closeDate)}
-                {showMonth ? ` · ${formatMonthLabel(row.monthKey).replace(/ \d{4}$/, "")}` : ""}
+                {showMonth
+                  ? ` · ${formatMonthLabel(row.monthKey).replace(/ \d{4}$/, "")}`
+                  : null}
+                <span className="text-ink-mute/50"> · </span>
+                {row.agentLabel}
               </p>
             </div>
-            <div className="shrink-0 text-right">
+            <div className="flex min-w-0 flex-col items-end gap-2">
               <p
                 className={cn(
-                  "font-semibold tabular-nums",
+                  "font-semibold tabular-nums whitespace-nowrap",
                   row.amount === 0 ? "text-ink-mute" : "text-ink"
                 )}
               >
                 {formatCurrency(row.amount)}
               </p>
+              <PaidToggle
+                paid={row.paid}
+                disabled={togglingId === row.id}
+                onToggle={() => onTogglePaid(row.id, !row.paid)}
+              />
             </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-ink-soft min-w-0">{row.agentLabel}</p>
-            <PaidToggle
-              paid={row.paid}
-              disabled={togglingId === row.id}
-              onToggle={() => onTogglePaid(row.id, !row.paid)}
-            />
           </div>
         </li>
       ))}
@@ -255,81 +410,15 @@ function DealTable({
         showMonth={showMonth}
       />
 
-      <div className="hidden lg:block min-w-0 overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b border-line text-left text-[11px] font-semibold uppercase tracking-wider text-ink-mute">
-              <th className="px-5 py-3 w-[110px]">Close</th>
-              {showMonth ? <th className="px-5 py-3 w-[120px]">Month</th> : null}
-              <th className="px-5 py-3 min-w-[140px]">Address</th>
-              <th className="px-5 py-3 w-[100px] text-right">Payout</th>
-              <th className="hidden xl:table-cell px-5 py-3 w-[140px]">Agent</th>
-              <th className="px-5 py-3 w-[118px]">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr
-                key={row.id}
-                className={cn(
-                  "border-b border-line/60 last:border-0 transition-colors",
-                  row.paid ? "bg-good/15" : "bg-warn/10"
-                )}
-              >
-                <td className="px-5 py-3.5 text-ink-soft tabular-nums whitespace-nowrap">
-                  {formatDate(row.closeDate)}
-                </td>
-                {showMonth ? (
-                  <td className="px-5 py-3.5 text-ink-soft whitespace-nowrap">
-                    {formatMonthLabel(row.monthKey).replace(/ \d{4}$/, "")}
-                  </td>
-                ) : null}
-                <td className="px-5 py-3.5 min-w-0">
-                  <DealAddress row={row} />
-                </td>
-                <td className="px-5 py-3.5 text-right font-semibold tabular-nums whitespace-nowrap">
-                  <span className={row.amount === 0 ? "text-ink-mute" : "text-ink"}>
-                    {formatCurrency(row.amount)}
-                  </span>
-                  {row.amount === 0 ? (
-                    <span className="block text-[10px] font-medium text-ink-mute mt-0.5">
-                      Closed · no payout
-                    </span>
-                  ) : null}
-                </td>
-                <td className="hidden xl:table-cell px-5 py-3.5 text-ink-soft">
-                  {row.agentLabel}
-                  {row.agentLabel.includes("Dual Side") ? (
-                    <span className="ml-2 text-[10px] font-semibold uppercase text-ink-mute">
-                      Both sides
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-5 py-3.5">
-                  <PaidToggle
-                    paid={row.paid}
-                    disabled={togglingId === row.id}
-                    onToggle={() => onTogglePaid(row.id, !row.paid)}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="bg-canvas/80 font-semibold text-ink">
-              <td className="px-5 py-3" colSpan={showMonth ? 3 : 2}>
-                {dealCount} transaction{dealCount === 1 ? "" : "s"}
-                {basePayAmount > 0 ? (
-                  <span className="font-normal text-ink-mute"> · incl. base pay</span>
-                ) : null}
-              </td>
-              <td className="px-5 py-3 text-right tabular-nums">{formatCurrency(total)}</td>
-              <td className="hidden xl:table-cell px-5 py-3" />
-              <td className="px-5 py-3" />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+      <DealGridList
+        rows={rows}
+        togglingId={togglingId}
+        onTogglePaid={onTogglePaid}
+        showMonth={showMonth}
+        dealCount={dealCount}
+        total={total}
+        basePayAmount={basePayAmount}
+      />
 
       <div className="border-t border-line/60 bg-canvas/80 px-4 py-3 text-sm font-semibold text-ink lg:hidden">
         <div className="flex items-center justify-between gap-3">
@@ -436,31 +525,33 @@ function MonthSection({
         )}
         aria-expanded={expanded}
       >
-        <div className="flex items-start justify-between gap-3 px-5 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-4 py-4 xl:px-5">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h2 className="text-[17px] font-semibold text-ink">{formatMonthLabel(monthKey)}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-[17px] font-semibold tracking-tight text-ink">
+                {formatMonthLabel(monthKey)}
+              </h2>
               {dealCount > 0 ? (
-                <span className="inline-flex items-center rounded-full border border-line bg-surface px-2.5 py-0.5 text-[11px] font-semibold text-ink-soft tabular-nums">
-                  {dealCount} transaction{dealCount === 1 ? "" : "s"}
+                <span className="inline-flex items-center rounded-full border border-line bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-soft tabular-nums">
+                  {dealCount}
                 </span>
               ) : null}
             </div>
-            <p className="text-xs text-ink-mute mt-0.5">
+            <p className="mt-0.5 text-xs text-ink-mute tabular-nums">
               {formatCurrency(total)} total · {formatCurrency(paidTotal)} paid
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="flex shrink-0 items-center gap-1.5">
             <span
               className={cn(
-                "rounded-full px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-semibold whitespace-nowrap",
+                "rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap",
                 allPaid ? "bg-good/50 text-good-ink" : "bg-warn/50 text-warn-ink"
               )}
             >
               {allPaid ? "All paid" : (
                 <>
-                  <span className="sm:hidden">Open</span>
-                  <span className="hidden sm:inline">Outstanding balance</span>
+                  <span className="md:hidden">Open</span>
+                  <span className="hidden md:inline">Outstanding</span>
                 </>
               )}
             </span>
@@ -718,7 +809,7 @@ export function IncomeTrackerView() {
 
           <TeamOverviewBar summary={summary} />
 
-          <div className="grid gap-6 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(240px,320px)] min-w-0">
+          <div className="grid gap-6 grid-cols-1 min-[1400px]:grid-cols-[minmax(0,1fr)_minmax(240px,300px)] min-w-0">
             <div className="space-y-6 min-w-0">
               {selectedAgent ? (
                 <AgentDealsSection
@@ -759,7 +850,7 @@ export function IncomeTrackerView() {
               )}
             </div>
 
-            <aside className="space-y-4 min-w-0 xl:sticky xl:top-6 xl:self-start">
+            <aside className="space-y-4 min-w-0 min-[1400px]:sticky min-[1400px]:top-6 min-[1400px]:self-start">
               <div className="rounded-[20px] border border-line bg-surface p-5 shadow-card">
                 <div className="flex items-center gap-2 mb-4">
                   <TrendingUp className="h-4 w-4 text-brand" />

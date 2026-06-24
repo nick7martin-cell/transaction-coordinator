@@ -57,6 +57,52 @@ export function formatNames(names: string[] | null | undefined): string {
   return names.join(", ");
 }
 
+export type PropertyAddressParts = {
+  street: string;
+  city: string | null;
+};
+
+/** Street + city for UI; drops state and ZIP (e.g. "13213 E Manor Blvd, Shakopee, MN 55379"). */
+export function parsePropertyAddressForDisplay(
+  address: string | null | undefined
+): PropertyAddressParts {
+  if (!address?.trim()) {
+    return { street: "Address pending", city: null };
+  }
+
+  const parts = address
+    .trim()
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return { street: "Address pending", city: null };
+  }
+
+  const street = parts[0];
+
+  if (parts.length === 1) {
+    return { street, city: null };
+  }
+
+  if (parts.length >= 3) {
+    return { street, city: parts[1] || null };
+  }
+
+  const rest = parts[1];
+  const cityStateZip = rest.match(/^(.+?)\s+[A-Za-z]{2}(?:\s+\d{5}(?:-\d{4})?)?$/);
+  if (cityStateZip) {
+    return { street, city: cityStateZip[1].trim() || null };
+  }
+
+  if (/^[A-Za-z]{2}$/.test(rest) || /^[A-Za-z]{2}\s+\d{5}/.test(rest)) {
+    return { street, city: null };
+  }
+
+  return { street, city: rest };
+}
+
 const STREET_TYPE_SUFFIX =
   /\s+(?:Circle|Cir\.?|Court|Ct\.?|Drive|Dr\.?|Lane|Ln\.?|Road|Rd\.?|Street|St\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Way|Place|Pl\.?|Trail|Trl\.?|Parkway|Pkwy\.?|Highway|Hwy\.?)$/i;
 
