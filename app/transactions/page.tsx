@@ -6,12 +6,14 @@ import { AppShell } from "@/components/layout/app-shell";
 import { TopBar } from "@/components/layout/top-bar";
 import { TransactionCard } from "@/components/transactions/transaction-card";
 import { PropertyAddressLabel } from "@/components/transactions/property-address-label";
+import { TransactionSearch } from "@/components/transactions/transaction-search";
 import { UploadZone } from "@/components/upload/upload-zone";
 import { PropertyImage } from "@/components/ui/property-image";
 import {
   daysUntilClosing,
   formatCurrency,
   formatDate,
+  matchesPropertyAddressSearch,
 } from "@/lib/format";
 import { propertyImageSrc } from "@/lib/property-image";
 import { matchesFilter, type TransactionFilter } from "@/lib/transaction-status";
@@ -98,26 +100,10 @@ export default function TransactionsPage() {
   );
 
   const agentOptions = useMemo(() => {
-    const q = search.toLowerCase().trim();
     const names = new Set<string>();
     for (const t of transactions) {
       if (!matchesFilter(t, activeFilter)) continue;
-      if (q) {
-        const d = t.extracted_data;
-        const haystack = [
-          d.propertyAddress,
-          d.buyerAgentName,
-          d.listingAgentName,
-          t.teamSteadyAgentName,
-          ...d.buyerNames,
-          ...d.sellerNames,
-          t.file_name,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(q)) continue;
-      }
+      if (!matchesPropertyAddressSearch(t.extracted_data.propertyAddress, search)) continue;
       const name = t.teamSteadyAgentName?.trim();
       if (name) names.add(name);
     }
@@ -131,42 +117,19 @@ export default function TransactionsPage() {
   }, [agentFilter, agentOptions]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
     return transactions
       .filter((t) => {
         if (!matchesFilter(t, activeFilter)) return false;
         if (agentFilter && (t.teamSteadyAgentName?.trim() ?? "") !== agentFilter) {
           return false;
         }
-        if (!q) return true;
-        const d = t.extracted_data;
-        const haystack = [
-          d.propertyAddress,
-          d.buyerAgentName,
-          d.listingAgentName,
-          t.teamSteadyAgentName,
-          ...d.buyerNames,
-          ...d.sellerNames,
-          t.file_name,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(q);
+        return matchesPropertyAddressSearch(t.extracted_data.propertyAddress, search);
       })
       .sort(sortByClosingDate);
   }, [transactions, activeFilter, search, agentFilter]);
 
   return (
-    <AppShell
-      topBar={
-        <TopBar
-          searchPlaceholder="Search by address, buyer, seller, agent..."
-          searchValue={search}
-          onSearch={setSearch}
-        />
-      }
-    >
+    <AppShell topBar={<TopBar showSearch={false} />}>
       <main className="p-6 md:p-8">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-7">
           <div>
@@ -228,7 +191,14 @@ export default function TransactionsPage() {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-7">
+        <div className="mb-7 space-y-4">
+          <TransactionSearch
+            value={search}
+            onChange={setSearch}
+            className="w-full max-w-md"
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
             {filters.map((f) => (
               <button
@@ -272,6 +242,7 @@ export default function TransactionsPage() {
               </option>
             ))}
           </select>
+          </div>
         </div>
 
         {loading && (
@@ -291,11 +262,27 @@ export default function TransactionsPage() {
           <div className="rounded-[20px] border border-dashed border-line bg-surface px-8 py-14 text-center shadow-card">
             <p className="font-semibold text-ink">No matching transactions</p>
             <p className="text-sm text-ink-soft mt-1">
-              Try a different filter or{" "}
-              <Link href="/" className="text-ink font-semibold underline">
-                upload a new agreement
-              </Link>
-              .
+              {search.trim() ? (
+                <>
+                  No addresses match &ldquo;{search.trim()}&rdquo;.{" "}
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="text-ink font-semibold underline"
+                  >
+                    Clear search
+                  </button>
+                  .
+                </>
+              ) : (
+                <>
+                  Try a different filter or{" "}
+                  <Link href="/" className="text-ink font-semibold underline">
+                    upload a new agreement
+                  </Link>
+                  .
+                </>
+              )}
             </p>
           </div>
         )}

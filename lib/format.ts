@@ -103,6 +103,22 @@ export function parsePropertyAddressForDisplay(
   return { street, city: rest };
 }
 
+/** Match search query against street + city only (ignores state/ZIP in stored address). */
+export function matchesPropertyAddressSearch(
+  address: string | null | undefined,
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (!address?.trim()) return false;
+
+  const { street, city } = parsePropertyAddressForDisplay(address);
+  return (
+    street.toLowerCase().includes(q) ||
+    (city?.toLowerCase().includes(q) ?? false)
+  );
+}
+
 const STREET_TYPE_SUFFIX =
   /\s+(?:Circle|Cir\.?|Court|Ct\.?|Drive|Dr\.?|Lane|Ln\.?|Road|Rd\.?|Street|St\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Way|Place|Pl\.?|Trail|Trl\.?|Parkway|Pkwy\.?|Highway|Hwy\.?)$/i;
 
