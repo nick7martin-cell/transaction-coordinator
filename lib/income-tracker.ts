@@ -39,7 +39,7 @@ export interface IncomeRow {
   agentLabel: string;
   paid: boolean;
   isBasePay: boolean;
-  /** Nick is the agent — payout is typically much higher than the $50 TC fee. */
+  /** Nick's personal income — agent commission or team referral payout (not TC fees). */
   isNickDeal: boolean;
   status: "closed" | "active" | "cancelled";
   monthKey: string;
@@ -79,7 +79,7 @@ export interface IncomeSummary {
   teamDealsClosed: number;
   teamDealsPending: number;
   teamDealsTotal: number;
-  /** Team income through today — base pay + deal fees; Nick deals count as $50 each. */
+  /** Team income through today — base pay + $50/side on team deals only. */
   teamIncomeClosed: number;
   /** Team income for the full year — forecast incl. run-rate at YTD pace. */
   teamIncomeProjected: number;
@@ -184,12 +184,21 @@ function isSameAgentDual(commission: CommissionResult): boolean {
   return commission.buyer.agentId === commission.seller.agentId;
 }
 
-function isNickDealFromCommission(commission: CommissionResult | null): boolean {
+function isNickAgentFromCommission(commission: CommissionResult | null): boolean {
   if (!commission) return false;
   return (
     commission.buyer?.agentId === NICK_AGENT_ID ||
     commission.seller?.agentId === NICK_AGENT_ID
   );
+}
+
+function isNickReferralRecipientFromCommission(
+  commission: CommissionResult | null
+): boolean {
+  if (!commission) return false;
+  if (commission.buyer && nickTeamReferralPayout(commission.buyer) > 0) return true;
+  if (commission.seller && nickTeamReferralPayout(commission.seller) > 0) return true;
+  return false;
 }
 
 function isNickDealFromAutofill(
@@ -272,15 +281,17 @@ export function buildTransactionIncomeRow(
     autofill != null ||
     !!buyerTs ||
     !!listingTs ||
-    isNickDealFromCommission(commission) ||
+    isNickAgentFromCommission(commission) ||
     (commission != null && hasSavedCommission(commission));
 
   if (!teamSteady) return null;
 
   const grossAmount = estimatePayout(commission, autofill);
-  const isNickDeal =
-    isNickDealFromCommission(commission) || isNickDealFromAutofill(autofill);
-  const amount = incomeTrackerPayout(grossAmount, isNickDeal);
+  const isNickAgent =
+    isNickAgentFromCommission(commission) || isNickDealFromAutofill(autofill);
+  const isNickReferral = isNickReferralRecipientFromCommission(commission);
+  const isNickDeal = isNickAgent || isNickReferral;
+  const amount = incomeTrackerPayout(grossAmount, isNickAgent);
 
   const today = new Date();
   today.setHours(12, 0, 0, 0);
@@ -495,8 +506,16 @@ export function computeIncomeSummary(
 
 /** Coordinator fee credited to team income — $50 per side (dual = $100). */
 export function teamCoordinatorFee(row: IncomeRow): number {
-  if (row.isBasePay) return 0;
+  if (row.isBasePay || row.isNickDeal) return 0;
   return agentDealCredit(row.agentLabel) * STANDARD_TC_FEE;
+}
+
+function isTeamIncomeDeal(row: IncomeRow): boolean {
+  return !row.isBasePay && !row.isNickDeal;
+}
+
+function teamDealCredits(rows: IncomeRow[]): number {
+  return sumDealCredits(rows.filter(isTeamIncomeDeal));
 }
 
 /** Base pay in the team-income model — $5,000 every month of the year. */
@@ -512,7 +531,7 @@ export function teamBasePayYtd(year: number, today: Date): number {
 }
 
 function teamFeesFromRows(rows: IncomeRow[]): number {
-  return sumDealCredits(rows.filter((r) => !r.isBasePay)) * STANDARD_TC_FEE;
+  return teamDealCredits(rows) * STANDARD_TC_FEE;
 }
 
 function sumDealCredits(rows: IncomeRow[]): number {
@@ -565,6 +584,10 @@ export function computeYearEndForecast(
   const projectedTeamFromKnown = closedTeamFees + pipelineTeamFees + teamBasePay;
   const projectedFromKnown = projectedTeamFromKnown + personalIncome;
 
+  const closedTeamCredits = teamDealCredits(closedDeals);
+  const pendingTeamCredits = teamDealCredits(pendingDeals);
+  const teamKnownCount = closedTeamCredits + pendingTeamCredits;
+
   if (year < currentYear) {
     const knownCount = closedCredits + pendingCredits;
     return {
@@ -576,7 +599,7 @@ export function computeYearEndForecast(
       projectedFromRunRate: 0,
       projectedTeamFromRunRate: 0,
       projectedDealCount: knownCount,
-      projectedTeamDealCount: knownCount,
+      projectedTeamDealCount: teamKnownCount,
       runRateDealCount: 0,
     };
   }
@@ -612,7 +635,8 @@ export function computeYearEndForecast(
 
   const knownCount = closedCredits + pendingCredits;
   const forecastDealCount = Math.round(knownCount + runRateCredits);
-  const projectedTeamIncome = forecastDealCount * STANDARD_TC_FEE + teamBasePay;
+  const forecastTeamDealCount = Math.round(teamKnownCount + runRateCredits);
+  const projectedTeamIncome = forecastTeamDealCount * STANDARD_TC_FEE + teamBasePay;
 
   return {
     projectedYearTotal: projectedTeamIncome + personalIncome,
@@ -623,7 +647,7 @@ export function computeYearEndForecast(
     projectedFromRunRate: runRateTeam,
     projectedTeamFromRunRate: runRateTeam,
     projectedDealCount: forecastDealCount,
-    projectedTeamDealCount: forecastDealCount,
+    projectedTeamDealCount: forecastTeamDealCount,
     runRateDealCount: runRateCredits,
   };
 }

@@ -485,8 +485,8 @@ function TeamOverviewBar({ summary }: { summary: IncomeSummary }) {
       </div>
       <p className="mt-2 text-[11px] text-ink-mute leading-relaxed">
         Team income = $50 per deal side (dual-side = $100) + $5,000 base pay each month
-        ($60,000/yr). Your personal agent commission is excluded from team income.
-        Projected: {forecastDealHint(summary)}.
+        ($60,000/yr). Your agent commission and team referral payouts are excluded from
+        team income. Projected: {forecastDealHint(summary)}.
       </p>
     </div>
   );

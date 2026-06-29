@@ -828,7 +828,7 @@
     "address": "3919 36th Ave",
     "amount": 698.75,
     "agentLabel": "Jadde - Buy Side",
-    "isNickDeal": false,
+    "isNickDeal": true,
     "paid": false
   },
   {
