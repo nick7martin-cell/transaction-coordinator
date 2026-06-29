@@ -118,9 +118,23 @@ function firstName(full: string): string {
   return full.trim().split(/\s+/)[0] || full.trim();
 }
 
+function nickTeamReferralPayout(side: SideBreakdown): number {
+  if (
+    side.referralType !== "team" ||
+    !side.teamReferralAgentName ||
+    side.teamReferralAmount == null ||
+    side.teamReferralAmount <= 0
+  ) {
+    return 0;
+  }
+  return findAgentIdByName(side.teamReferralAgentName) === NICK_AGENT_ID
+    ? side.teamReferralAmount
+    : 0;
+}
+
 export function nickPayoutFromSide(side: SideBreakdown): number {
   if (side.agentId === NICK_AGENT_ID) return side.agentAmount;
-  return side.nickAmount;
+  return side.nickAmount + nickTeamReferralPayout(side);
 }
 
 export function nickPayoutFromCommission(commission: CommissionResult): number {
