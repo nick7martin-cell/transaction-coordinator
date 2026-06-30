@@ -61,7 +61,8 @@ export const SPLIT_TIER_LABELS: Record<SplitTier, string> = {
 /** Nick's per-transaction TC fee in dollars, deducted from team share and added to his agent amount. */
 export const NICK_TC_FEE = 50;
 
-// ── Team Steady agent emails (matched by FIRST NAME only) ──────────────────────
+/** Hubert uses RE/MAX Results email, not @teamsteady.com. */
+export const HUBERT_EMAIL = "hubert@ts-re.com";
 // PA extractions don't always capture last names, so we key on first name.
 const TEAM_STEADY_EMAILS: Record<string, string> = {
   lucas: "lucas@teamsteady.com",
@@ -76,7 +77,7 @@ const TEAM_STEADY_EMAILS: Record<string, string> = {
   phil: "phil@teamsteady.com",
   jeremy: "jeremy@teamsteady.com",
   kolin: "kolin@teamsteady.com",
-  hubert: "hubert@teamsteady.com",
+  hubert: HUBERT_EMAIL,
   nick: "nick@teamsteady.com",
   sam: "sam@teamsteady.com",
 };

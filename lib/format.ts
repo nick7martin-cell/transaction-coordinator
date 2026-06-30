@@ -132,3 +132,27 @@ export function worksheetPdfTitle(address: string | null | undefined): string {
   const streetName = streetRest.replace(STREET_TYPE_SUFFIX, "").trim();
   return `${streetNumber} ${streetName} CW`.trim();
 }
+
+const PLACEHOLDER_STRINGS = new Set(["null", "undefined", "n/a", "na", "none"]);
+
+/** Treat missing/placeholder extraction values as empty for contact fields. */
+export function sanitizeContactField(value: string | null | undefined): string {
+  if (value == null) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (PLACEHOLDER_STRINGS.has(trimmed.toLowerCase())) return "";
+  return trimmed;
+}
+
+export function sanitizeNullableField(value: unknown): string | null {
+  if (value == null) return null;
+  const sanitized = sanitizeContactField(typeof value === "string" ? value : String(value));
+  return sanitized || null;
+}
+
+export function sanitizeStringArray(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) =>
+    sanitizeContactField(item == null ? "" : String(item))
+  );
+}

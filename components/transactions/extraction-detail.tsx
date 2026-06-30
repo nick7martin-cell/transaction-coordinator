@@ -13,7 +13,7 @@ import {
   parseCurrencyInput,
   daysUntilClosing,
 } from "@/lib/format";
-import { findAgentIdByName, teamSteadyEmailFor } from "@/lib/agents";
+import { findAgentIdByName, teamSteadyEmailFor, HUBERT_EMAIL } from "@/lib/agents";
 import { resolveIntroEmAgentId } from "@/lib/gmail/intro-em-draft";
 import { normalizeParties } from "@/lib/canonical-contacts";
 import { partiesToWorksheet } from "@/lib/parties-worksheet";
@@ -711,7 +711,10 @@ export function ExtractionDetail({
         console.log(`[contacts] loaded ${loaded.length} saved contacts from Supabase`);
         partiesRef.current = loaded;
         setParties(loaded);
-        if (loaded.some((p, i) => p.email !== m.parties![i].email)) {
+        if (loaded.some((p, i) => {
+          const raw = m.parties![i];
+          return p.email !== raw.email || p.phone !== raw.phone;
+        })) {
           void patchMeta({ parties: loaded, worksheet: partiesToWorksheet(loaded) });
         }
       } else {
@@ -935,9 +938,13 @@ export function ExtractionDetail({
         const merged = { ...p, ...patch };
         // Auto-fill a Team Steady agent email when the name changes and the
         // email is still blank — kept editable so a TC can override.
-        if ("name" in patch && !merged.email) {
-          const tsEmail = teamSteadyEmailFor(merged.name);
-          if (tsEmail) merged.email = tsEmail;
+        if ("name" in patch) {
+          if (findAgentIdByName(merged.name) === "hubert-ngabirano") {
+            merged.email = HUBERT_EMAIL;
+          } else if (!merged.email) {
+            const tsEmail = teamSteadyEmailFor(merged.name);
+            if (tsEmail) merged.email = tsEmail;
+          }
         }
         return merged;
       })

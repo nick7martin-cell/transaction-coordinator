@@ -1,3 +1,5 @@
+import { findAgentIdByName, HUBERT_EMAIL } from "@/lib/agents";
+import { sanitizeContactField } from "@/lib/format";
 import type { Contact, TransactionParty } from "@/lib/types";
 
 export const INGRID_WATERMARK_EMAIL = "teamingrid@wmtitle.com";
@@ -23,7 +25,8 @@ export function canonicalContactEmail(
   companyName?: string | null
 ): string {
   if (isIngridAtWatermark(contactName, companyName)) return INGRID_WATERMARK_EMAIL;
-  return email ?? "";
+  if (findAgentIdByName(contactName) === "hubert-ngabirano") return HUBERT_EMAIL;
+  return sanitizeContactField(email);
 }
 
 export function normalizeContact(contact: Contact): Contact {
@@ -42,6 +45,14 @@ export function normalizePartyEmail(party: TransactionParty): TransactionParty {
   return { ...party, email };
 }
 
+function normalizePartyContacts(party: TransactionParty): TransactionParty {
+  const withEmail = normalizePartyEmail(party);
+  const email = sanitizeContactField(withEmail.email);
+  const phone = sanitizeContactField(withEmail.phone);
+  if (email === withEmail.email && phone === withEmail.phone) return withEmail;
+  return { ...withEmail, email, phone };
+}
+
 export function normalizeParties(parties: TransactionParty[]): TransactionParty[] {
-  return parties.map(normalizePartyEmail);
+  return parties.map(normalizePartyContacts);
 }

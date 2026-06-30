@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import { Building2, Mail, Phone, Plus, Trash2, UserPlus } from "lucide-react";
 import { getAvatarColor, getInitials } from "@/lib/property-image";
 import { canonicalContactEmail } from "@/lib/canonical-contacts";
+import { sanitizeContactField } from "@/lib/format";
 import {
   PARTY_ROLE_OPTIONS,
   type Contact,
@@ -115,6 +116,35 @@ function InlineText({
   );
 }
 
+/** Input that stays in sync when the same row is edited elsewhere (e.g. Principals ↔ Contacts). */
+function BlurSyncedInput({
+  value,
+  onSave,
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "defaultValue"> & {
+  value: string;
+  onSave: (value: string) => void;
+}) {
+  const [local, setLocal] = useState(value);
+
+  useEffect(() => {
+    setLocal(value);
+  }, [value]);
+
+  return (
+    <input
+      {...props}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => {
+        if (local !== value) onSave(local);
+      }}
+      className={className}
+    />
+  );
+}
+
 // ── Principals card (Buyers + Sellers) ────────────────────────────────────────
 
 function PrincipalRow({
@@ -140,7 +170,7 @@ function PrincipalRow({
         <span className="flex items-center gap-1.5 text-sm text-ink-soft">
           <Mail className="h-3.5 w-3.5 shrink-0 text-ink-mute" />
           <InlineText
-            value={party.email}
+            value={sanitizeContactField(party.email)}
             placeholder="Email"
             type="email"
             onSave={(v) => onUpdate(party.id, { email: v })}
@@ -151,7 +181,7 @@ function PrincipalRow({
         <span className="flex items-center gap-1.5 text-sm text-ink-soft">
           <Phone className="h-3.5 w-3.5 shrink-0 text-ink-mute" />
           <InlineText
-            value={party.phone}
+            value={sanitizeContactField(party.phone)}
             placeholder="Phone"
             onSave={(v) => onUpdate(party.id, { phone: v })}
             className="text-sm text-ink-soft"
@@ -315,10 +345,10 @@ function ContactListRow({
       <div className="grid flex-1 min-w-0 gap-2 md:grid-cols-2">
         {/* Name + role */}
         <div className="space-y-2">
-          <input
-            defaultValue={party.name}
+          <BlurSyncedInput
+            value={party.name}
             placeholder="Full name"
-            onBlur={(e) => { if (e.target.value !== party.name) onUpdate(party.id, { name: e.target.value }); }}
+            onSave={(v) => onUpdate(party.id, { name: v })}
             className={cn(fieldCls, "font-semibold")}
           />
           <select
@@ -339,24 +369,24 @@ function ContactListRow({
 
         {/* Company + email + phone */}
         <div className="space-y-2">
-          <input
-            defaultValue={party.company}
+          <BlurSyncedInput
+            value={party.company}
             placeholder="Company / brokerage"
-            onBlur={(e) => { if (e.target.value !== party.company) onUpdate(party.id, { company: e.target.value }); }}
+            onSave={(v) => onUpdate(party.id, { company: v })}
             className={fieldCls}
           />
           <div className="flex gap-2">
-            <input
-              defaultValue={party.email}
+            <BlurSyncedInput
+              value={sanitizeContactField(party.email)}
               placeholder="Email"
               type="email"
-              onBlur={(e) => { if (e.target.value !== party.email) onUpdate(party.id, { email: e.target.value }); }}
+              onSave={(v) => onUpdate(party.id, { email: v })}
               className={fieldCls}
             />
-            <input
-              defaultValue={party.phone}
+            <BlurSyncedInput
+              value={sanitizeContactField(party.phone)}
               placeholder="Phone"
-              onBlur={(e) => { if (e.target.value !== party.phone) onUpdate(party.id, { phone: e.target.value }); }}
+              onSave={(v) => onUpdate(party.id, { phone: v })}
               className={fieldCls}
             />
           </div>

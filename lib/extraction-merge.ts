@@ -1,4 +1,5 @@
 import type { ExtractedData } from "@/lib/types";
+import { sanitizeContactField } from "@/lib/format";
 
 const FIELD_LABELS: Partial<Record<keyof ExtractedData, string>> = {
   propertyAddress: "Property address",
@@ -130,4 +131,44 @@ export function mergeExtractedData(
   }
 
   return { merged, filled };
+}
+
+const LENDER_KEYS = [
+  "lenderName",
+  "lenderCompany",
+  "lenderEmail",
+  "lenderPhone",
+] as const satisfies readonly (keyof ExtractedData)[];
+
+/**
+ * When supplemental notes/screenshots name a lender, allow that to replace a
+ * previously auto-seeded or extracted loan officer (e.g. Josh Little → Laura Freese).
+ */
+export function applySupplementalLenderOverride(
+  existing: ExtractedData,
+  incoming: ExtractedData
+): ExtractedData {
+  const incName = sanitizeContactField(incoming.lenderName ?? "");
+  const incEmail = sanitizeContactField(incoming.lenderEmail ?? "");
+  if (!incName && !incEmail) return existing;
+
+  const exName = sanitizeContactField(existing.lenderName ?? "");
+  const exEmail = sanitizeContactField(existing.lenderEmail ?? "");
+  const nameDiffers =
+    !!incName && !!exName && incName.toLowerCase() !== exName.toLowerCase();
+  const emailDiffers =
+    !!incEmail &&
+    !!exEmail &&
+    incEmail.toLowerCase() !== exEmail.toLowerCase();
+
+  if (!nameDiffers && !emailDiffers) return existing;
+
+  const merged: ExtractedData = { ...existing };
+  for (const key of LENDER_KEYS) {
+    const next = incoming[key];
+    if (typeof next === "string" && next.trim()) {
+      merged[key] = next;
+    }
+  }
+  return merged;
 }

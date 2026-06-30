@@ -58,6 +58,8 @@ SUPPLEMENTAL SOURCES — CRITICAL:
   • "Seller's title: First American Title, closer Sarah Smith sarah@fa.com 612-555-0100" → sellerTitle* fields
   • "Other side title company: ABC Escrow, John Doe john@abc.com" → sellerTitle* on buyer-side Team Steady deals, buyerTitle* on listing-side deals
   • "Listing agent: Jane Smith jane@broker.com 612-555-0100" → listingAgent* fields
+  • "Lender: Laura Freese, Edge Home Finance\\nlaura@edge.com | 507-227-0843" → lenderName, lenderCompany, lenderEmail, lenderPhone
+- When coordinator notes name a specific lender or loan officer, treat that person as authoritative — even if a different default contact for the same company is already on file.
 - When notes mention title/escrow without specifying buyer vs seller, use sellerTitle* if Team Steady represents the buyer (the other side's title), or buyerTitle* if Team Steady represents the seller.
 - When the same person appears in multiple sources, prefer the most complete contact record.
 - buyerEmails/buyerPhones and sellerEmails/sellerPhones arrays must align by index with buyerNames/sellerNames when possible.
@@ -104,6 +106,8 @@ Known context for this transaction:
 - Property: ${context.propertyAddress ?? "unknown"}
 - Existing contacts already on file:
 ${context.knownParties || "  (none yet)"}
+
+When notes or screenshots name a specific lender/loan officer, extract that person even if a different lender is listed above — coordinator notes override defaults.
 
 RULES:
 - Return ONLY valid JSON, no other text, no markdown, no code blocks

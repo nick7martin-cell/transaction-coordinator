@@ -1,5 +1,10 @@
 import type { CommissionResult } from "@/lib/commission";
-import { teamSteadyEmailFor } from "@/lib/agents";
+import { teamSteadyEmailFor, HUBERT_EMAIL, findAgentIdByName } from "@/lib/agents";
+import {
+  sanitizeContactField,
+  sanitizeNullableField,
+  sanitizeStringArray,
+} from "@/lib/format";
 
 export type FinancingType = "conventional" | "FHA" | "VA" | "cash" | null;
 
@@ -182,14 +187,24 @@ function randomId(): string {
 }
 
 export function makeParty(p: Omit<TransactionParty, "id">): TransactionParty {
-  return { id: randomId(), ...withTeamSteadyEmail(p) };
+  const clean = {
+    ...p,
+    email: sanitizeContactField(p.email),
+    phone: sanitizeContactField(p.phone),
+  };
+  return { id: randomId(), ...withTeamSteadyEmail(clean) };
 }
 
 /** Fill in a Team Steady agent email when the name matches and no email is set. */
 export function withTeamSteadyEmail<T extends { name: string; email: string }>(p: T): T {
-  if (p.email) return p;
-  const email = teamSteadyEmailFor(p.name);
-  return email ? { ...p, email } : p;
+  const email = sanitizeContactField(p.email);
+  const base = email === p.email ? p : { ...p, email };
+  if (findAgentIdByName(p.name) === "hubert-ngabirano") {
+    return { ...base, email: HUBERT_EMAIL };
+  }
+  if (base.email) return base;
+  const teamEmail = teamSteadyEmailFor(p.name);
+  return teamEmail ? { ...base, email: teamEmail } : base;
 }
 
 /** Dual agency = same brokerage OR same licensee on both sides. */
@@ -268,8 +283,8 @@ export function coerceExtractedData(
   const r = raw as Record<string, unknown>;
 
   function str(a: string, b?: string): string | null {
-    const v = r[a] ?? (b ? r[b] : undefined) ?? null;
-    return typeof v === "string" ? v : null;
+    const v = r[a] ?? (b ? r[b] : undefined);
+    return sanitizeNullableField(v);
   }
   function num(a: string, b?: string): number | null {
     const v = r[a] ?? (b ? r[b] : undefined) ?? null;
@@ -277,7 +292,7 @@ export function coerceExtractedData(
   }
   function arr(a: string, b?: string): string[] {
     const v = r[a] ?? (b ? r[b] : undefined);
-    return Array.isArray(v) ? v.map(String) : [];
+    return sanitizeStringArray(v);
   }
 
   return {

@@ -1,4 +1,5 @@
 import { OTHER_SIDE_TITLE_UNKNOWN, titleInfoForSide } from "@/lib/transaction-seed";
+import { sanitizeContactField } from "@/lib/format";
 import {
   detectDualAgency,
   makeParty,
@@ -13,7 +14,7 @@ function normName(name: string): string {
 }
 
 function isBlank(value: string | null | undefined): boolean {
-  return !value?.trim();
+  return !sanitizeContactField(value);
 }
 
 function partyListHasName(parties: TransactionParty[], name: string): boolean {
@@ -177,23 +178,46 @@ function mergeLenderParty(
   added: PartyMergeEntry[],
   updated: PartyMergeEntry[]
 ): TransactionParty[] {
-  const hasLender =
-    d.lenderName?.trim() ||
-    d.lenderCompany?.trim() ||
-    d.lenderEmail?.trim() ||
-    d.lenderPhone?.trim();
+  const incoming = {
+    name: sanitizeContactField(d.lenderName ?? ""),
+    company: sanitizeContactField(d.lenderCompany ?? ""),
+    email: sanitizeContactField(d.lenderEmail ?? ""),
+    phone: sanitizeContactField(d.lenderPhone ?? ""),
+  };
+  const hasLender = !!(incoming.name || incoming.company || incoming.email || incoming.phone);
   if (!hasLender) return parties;
 
   let next = [...parties];
   const existing = findPartyByRole(next, "lender");
 
   if (existing) {
-    const { party, updated: fields } = fillBlankFields(existing, {
-      name: d.lenderName ?? "",
-      company: d.lenderCompany ?? "",
-      email: d.lenderEmail ?? "",
-      phone: d.lenderPhone ?? "",
-    });
+    const nameDiffers =
+      !!incoming.name &&
+      !!existing.name.trim() &&
+      normName(incoming.name) !== normName(existing.name);
+    const emailDiffers =
+      !!incoming.email &&
+      !!existing.email.trim() &&
+      incoming.email.toLowerCase() !== existing.email.trim().toLowerCase();
+
+    if (nameDiffers || (emailDiffers && incoming.name)) {
+      const replaced = {
+        ...existing,
+        name: incoming.name || existing.name,
+        company: incoming.company || existing.company,
+        email: incoming.email || existing.email,
+        phone: incoming.phone || existing.phone,
+      };
+      next = applyPartyUpdate(next, existing.id, replaced);
+      updated.push({
+        label: "Lender",
+        name: replaced.name || replaced.company || "Lender",
+        detail: "replaced lender from supplemental extraction",
+      });
+      return next;
+    }
+
+    const { party, updated: fields } = fillBlankFields(existing, incoming);
     if (fields.length > 0) {
       next = applyPartyUpdate(next, existing.id, party);
       updated.push({
@@ -208,23 +232,23 @@ function mergeLenderParty(
   next.push(
     makeParty({
       role: "lender",
-      name: d.lenderName ?? "",
-      company: d.lenderCompany ?? "",
-      email: d.lenderEmail ?? "",
-      phone: d.lenderPhone ?? "",
+      name: incoming.name,
+      company: incoming.company,
+      email: incoming.email,
+      phone: incoming.phone,
     })
   );
   added.push({
     label: "Lender",
-    name: d.lenderName?.trim() || d.lenderCompany?.trim() || "Lender",
+    name: incoming.name || incoming.company || "Lender",
   });
   return next;
 }
 
 /**
  * Merge extracted party contact info into an existing roster.
- * Adds new parties and fills blank email/phone/company fields on matches —
- * never overwrites populated contact details.
+ * Adds new parties and fills blank fields; lender/title defaults can be replaced
+ * when supplemental extraction names a different contact.
  */
 export function mergePartiesFromExtraction(
   existing: TransactionParty[],
@@ -242,8 +266,8 @@ export function mergePartiesFromExtraction(
     const existingBuyer = findPartyByRoleAndName(parties, "buyer", trimmed);
     if (existingBuyer) {
       const { party, updated: fields } = fillBlankFields(existingBuyer, {
-        email: d.buyerEmails[i] ?? "",
-        phone: d.buyerPhones[i] ?? "",
+        email: sanitizeContactField(d.buyerEmails[i]),
+        phone: sanitizeContactField(d.buyerPhones[i]),
       });
       if (fields.length > 0) {
         parties = applyPartyUpdate(parties, existingBuyer.id, party);
@@ -258,8 +282,8 @@ export function mergePartiesFromExtraction(
         name: trimmed,
         role: "buyer",
         company: "",
-        email: d.buyerEmails[i] ?? "",
-        phone: d.buyerPhones[i] ?? "",
+        email: sanitizeContactField(d.buyerEmails[i]),
+        phone: sanitizeContactField(d.buyerPhones[i]),
       })
     );
     added.push({ label: "Buyer", name: trimmed });
@@ -272,8 +296,8 @@ export function mergePartiesFromExtraction(
     const existingSeller = findPartyByRoleAndName(parties, "seller", trimmed);
     if (existingSeller) {
       const { party, updated: fields } = fillBlankFields(existingSeller, {
-        email: d.sellerEmails[i] ?? "",
-        phone: d.sellerPhones[i] ?? "",
+        email: sanitizeContactField(d.sellerEmails[i]),
+        phone: sanitizeContactField(d.sellerPhones[i]),
       });
       if (fields.length > 0) {
         parties = applyPartyUpdate(parties, existingSeller.id, party);
@@ -288,8 +312,8 @@ export function mergePartiesFromExtraction(
         name: trimmed,
         role: "seller",
         company: "",
-        email: d.sellerEmails[i] ?? "",
-        phone: d.sellerPhones[i] ?? "",
+        email: sanitizeContactField(d.sellerEmails[i]),
+        phone: sanitizeContactField(d.sellerPhones[i]),
       })
     );
     added.push({ label: "Seller", name: trimmed });

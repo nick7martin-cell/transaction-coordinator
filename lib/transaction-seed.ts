@@ -171,6 +171,9 @@ export function matchPreferredLender(
     const emailMatch =
       !!extractedEmail && !!contact.email && norm(contact.email) === extractedEmail;
 
+    // Company-only match when the document names a different loan officer.
+    if (extractedName && !nameMatch) continue;
+
     if (nameMatch || companyMatch || emailMatch) return contact;
   }
 

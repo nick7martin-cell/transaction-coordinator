@@ -38,7 +38,7 @@ export function partiesToWorksheet(parties: TransactionParty[]): Record<string, 
   if (ba) {
     ws.buyerAgentName = ba.name;
     ws.buyerAgentCo = ba.company;
-    ws.buyerAgentEmail = ba.email;
+    ws.buyerAgentEmail = partyEmail(ba);
     ws.buyerAgentPhone = ba.phone;
   }
 
@@ -46,7 +46,7 @@ export function partiesToWorksheet(parties: TransactionParty[]): Record<string, 
   if (la) {
     ws.listingAssociate = la.name;
     ws.listingCo = la.company;
-    ws.listingEmail = la.email;
+    ws.listingEmail = partyEmail(la);
     ws.listingPhone = la.phone;
   }
 
@@ -54,7 +54,7 @@ export function partiesToWorksheet(parties: TransactionParty[]): Record<string, 
   if (lender) {
     ws.lender = lender.company;
     ws.loanOfficer = lender.name;
-    ws.lenderEmail = lender.email;
+    ws.lenderEmail = partyEmail(lender);
     ws.lenderPhone = lender.phone;
   }
 

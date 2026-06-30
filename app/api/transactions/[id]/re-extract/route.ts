@@ -2,7 +2,7 @@ import {
   extractFromDocuments,
   extractSupplementalContacts,
 } from "@/lib/extract-pdf";
-import { mergeExtractedData } from "@/lib/extraction-merge";
+import { mergeExtractedData, applySupplementalLenderOverride } from "@/lib/extraction-merge";
 import { mergeWorksheetFromParties } from "@/lib/parties-worksheet";
 import { mergePartiesFromExtraction } from "@/lib/party-merge";
 import { supabase } from "@/lib/supabase";
@@ -118,7 +118,8 @@ export async function POST(
       });
     }
 
-    const { merged, filled } = mergeExtractedData(current, incoming);
+    const { merged: baseMerged, filled } = mergeExtractedData(current, incoming);
+    const merged = applySupplementalLenderOverride(baseMerged, incoming);
 
     const {
       parties: mergedParties,
