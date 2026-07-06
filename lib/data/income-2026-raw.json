@@ -168,14 +168,6 @@
     "paid": true
   },
   {
-    "closeDate": "2026-02-12",
-    "address": "8504 Edison St",
-    "amount": 229.71,
-    "agentLabel": "Nazar - Buy Side",
-    "isNickDeal": false,
-    "paid": true
-  },
-  {
     "closeDate": "2026-02-16",
     "address": "1808 Tatum St",
     "amount": 50,
