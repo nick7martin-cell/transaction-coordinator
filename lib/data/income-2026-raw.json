@@ -872,7 +872,7 @@
     "paid": false
   },
   {
-    "closeDate": "2026-06-26",
+    "closeDate": "2026-08-21",
     "address": "4752 Blanding Ct",
     "amount": 50,
     "agentLabel": "Jeremy - Listing",
@@ -904,7 +904,7 @@
     "paid": false
   },
   {
-    "closeDate": "2026-06-30",
+    "closeDate": "2026-07-09",
     "address": "17911 Vale St",
     "amount": 50,
     "agentLabel": "Collin - Listing",
@@ -924,14 +924,6 @@
     "address": "127 Bluestem Ave",
     "amount": 50,
     "agentLabel": "Nazar - Buy Side",
-    "isNickDeal": false,
-    "paid": false
-  },
-  {
-    "closeDate": "2026-06-30",
-    "address": "8504 Edison St",
-    "amount": 50,
-    "agentLabel": "Nazar - Listing",
     "isNickDeal": false,
     "paid": false
   },
