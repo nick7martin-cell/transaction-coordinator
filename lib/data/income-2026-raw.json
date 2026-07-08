@@ -976,6 +976,14 @@
     "paid": false
   },
   {
+    "closeDate": "2026-07-06",
+    "address": "2636 226th Lane NE",
+    "amount": 50,
+    "agentLabel": "Collin - Listing",
+    "isNickDeal": false,
+    "paid": true
+  },
+  {
     "closeDate": "2026-07-08",
     "address": "19 S 1st St",
     "amount": 50,
