@@ -30,6 +30,43 @@ import { cn } from "@/lib/utils";
 
 type Side = "buyer" | "seller" | "dual";
 
+function commissionInputHint(
+  side: Side,
+  buyerAgentId: string,
+  buyerPct: string,
+  sellerAgentId: string,
+  sellerPct: string
+): string | null {
+  const needsBuyer = side === "buyer" || side === "dual";
+  const needsSeller = side === "seller" || side === "dual";
+
+  if (needsBuyer) {
+    if (!buyerAgentId) return "Select the Team Steady agent for the buyer side.";
+    if (!buyerPct.trim() || isNaN(parseFloat(buyerPct))) {
+      return "Enter the buyer broker commission %.";
+    }
+  }
+  if (needsSeller) {
+    if (!sellerAgentId) return "Select the Team Steady agent for the listing side.";
+    if (!sellerPct.trim() || isNaN(parseFloat(sellerPct))) {
+      return "Enter the listing broker commission %.";
+    }
+  }
+  return null;
+}
+
+async function readMetaPatchError(res: Response): Promise<string> {
+  try {
+    const payload = await res.json();
+    if (typeof payload?.error === "string" && payload.error.trim()) {
+      return payload.error;
+    }
+  } catch {
+    /* ignore */
+  }
+  return `Save failed (${res.status})`;
+}
+
 function applySideReferral(
   b: SideBreakdown | null | undefined,
   referral: ReferralConfig | null
@@ -363,6 +400,7 @@ export function CommissionCalculator({
   const [meta, setMeta] = useState<TransactionMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Form state
   const [side, setSide] = useState<Side>("buyer");
@@ -383,33 +421,41 @@ export function CommissionCalculator({
   const autofillDone = useRef(false);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/transactions/${transaction.id}/meta`);
-    const payload = await res.json();
-    const m: TransactionMeta | null = payload.meta ?? null;
-    setMeta(m);
+    try {
+      const res = await fetch(`/api/transactions/${transaction.id}/meta`);
+      const payload = await res.json();
+      if (!res.ok) {
+        setSaveError(readMetaPatchError(res));
+        return;
+      }
+      const m: TransactionMeta | null = payload.meta ?? null;
+      setMeta(m);
 
-    if (m && hasSavedCommission(m.commission)) {
-      const c = m.commission!;
-      setSide(c.side);
-      if (c.buyer) {
-        setBuyerAgentId(c.buyer.agentId);
-        setBuyerPct(String(c.buyer.commissionPct));
+      if (m && hasSavedCommission(m.commission)) {
+        const c = m.commission!;
+        setSide(c.side);
+        if (c.buyer) {
+          setBuyerAgentId(c.buyer.agentId);
+          setBuyerPct(String(c.buyer.commissionPct));
+        }
+        if (c.seller) {
+          setSellerAgentId(c.seller.agentId);
+          setSellerPct(String(c.seller.commissionPct));
+        }
+        if (c.referral) {
+          setReferralType(c.referral.type);
+          setReferralPct(String(c.referral.pct));
+          setReferralRecipientKey(c.referral.recipientKey);
+          setReferralRecipientOther(c.referral.recipientOther ?? "");
+        }
+        setDerekSplitOverride(!!c.derekSplitOverride);
+        setResult(c);
       }
-      if (c.seller) {
-        setSellerAgentId(c.seller.agentId);
-        setSellerPct(String(c.seller.commissionPct));
-      }
-      if (c.referral) {
-        setReferralType(c.referral.type);
-        setReferralPct(String(c.referral.pct));
-        setReferralRecipientKey(c.referral.recipientKey);
-        setReferralRecipientOther(c.referral.recipientOther ?? "");
-      }
-      setDerekSplitOverride(!!c.derekSplitOverride);
-      setResult(c);
+    } catch {
+      setSaveError("Could not load saved commission data.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, [transaction.id]);
 
   useEffect(() => { load(); }, [load]);
@@ -484,6 +530,7 @@ export function CommissionCalculator({
 
     setResult(commission);
     setSaving(true);
+    setSaveError(null);
     fetch(`/api/transactions/${transaction.id}/meta`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -491,7 +538,17 @@ export function CommissionCalculator({
         commission,
         worksheet: worksheetFromCommission(commission),
       }),
-    }).finally(() => setSaving(false));
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          setSaveError(await readMetaPatchError(res));
+          return;
+        }
+        const payload = await res.json();
+        if (payload.meta) setMeta(payload.meta);
+      })
+      .catch(() => setSaveError("Could not save commission."))
+      .finally(() => setSaving(false));
   }, [loading, meta, parties, data, salePrice, transaction.id]);
 
   function buildReferralConfig(): ReferralConfig | null {
@@ -525,7 +582,48 @@ export function CommissionCalculator({
   }
 
   function calculate() {
+    runCalculate();
+  }
+
+  async function save(commission: CommissionResult) {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/transactions/${transaction.id}/meta`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          commission,
+          worksheet: worksheetFromCommission(commission),
+        }),
+      });
+      if (!res.ok) {
+        setSaveError(await readMetaPatchError(res));
+        return;
+      }
+      const payload = await res.json();
+      if (payload.meta) setMeta(payload.meta);
+    } catch {
+      setSaveError("Could not save commission.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function runCalculate() {
     if (!salePrice) return;
+    const hint = commissionInputHint(
+      side,
+      buyerAgentId,
+      buyerPct,
+      sellerAgentId,
+      sellerPct
+    );
+    if (hint) {
+      setSaveError(hint);
+      return;
+    }
+
     const referral = buildReferralConfig();
     const commission = buildCommissionResult(
       side,
@@ -538,20 +636,14 @@ export function CommissionCalculator({
       derekSplitOverride
     );
 
-    setResult(commission);
-    save(commission);
-  }
+    if (!commission.buyer && !commission.seller) {
+      setSaveError("Could not calculate commission — check agent and % fields.");
+      return;
+    }
 
-  async function save(commission: CommissionResult) {
-    setSaving(true);
-    // Push the calculated values straight onto the closing-worksheet overrides
-    // so the worksheet is always populated and persists after refresh.
-    await fetch(`/api/transactions/${transaction.id}/meta`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commission, worksheet: worksheetFromCommission(commission) }),
-    });
-    setSaving(false);
+    setSaveError(null);
+    setResult(commission);
+    void save(commission);
   }
 
   if (loading) return null;
@@ -611,6 +703,12 @@ export function CommissionCalculator({
         {!salePrice && (
           <div className="rounded-xl border border-warn bg-warn/45 px-4 py-3 text-sm text-warn-ink">
             Purchase price not extracted — commission amounts cannot be calculated yet.
+          </div>
+        )}
+
+        {saveError && (
+          <div className="rounded-xl border border-danger bg-danger/15 px-4 py-3 text-sm text-danger-ink">
+            {saveError}
           </div>
         )}
 

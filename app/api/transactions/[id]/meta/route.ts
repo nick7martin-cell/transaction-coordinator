@@ -66,6 +66,11 @@ export async function PATCH(
 
   if ("parties" in body) {
     worksheet._parties = body.parties;
+  } else if ("worksheet" in body) {
+    const existingWs = (existing?.worksheet ?? {}) as Record<string, unknown>;
+    if (Array.isArray(existingWs._parties) && !Array.isArray(worksheet._parties)) {
+      worksheet._parties = existingWs._parties;
+    }
   }
 
   // Only write columns guaranteed to exist on the base table. The contact roster

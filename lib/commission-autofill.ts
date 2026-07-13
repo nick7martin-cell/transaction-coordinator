@@ -12,7 +12,6 @@ export function hasSavedCommission(
 ): boolean {
   if (!c || typeof c !== "object") return false;
   if (c.side !== "buyer" && c.side !== "seller" && c.side !== "dual") return false;
-  if (c.side === "dual") return true;
   return !!(c.buyer ?? c.seller);
 }
 
