@@ -425,7 +425,7 @@ export function CommissionCalculator({
       const res = await fetch(`/api/transactions/${transaction.id}/meta`);
       const payload = await res.json();
       if (!res.ok) {
-        setSaveError(readMetaPatchError(res));
+        setSaveError(await readMetaPatchError(res));
         return;
       }
       const m: TransactionMeta | null = payload.meta ?? null;
