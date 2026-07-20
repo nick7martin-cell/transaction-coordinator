@@ -2,9 +2,9 @@ import { findAgent, findAgentIdByName, NICK_TC_FEE } from "@/lib/agents";
 import {
   buildManualIncomeRow,
   dedupeDealRows,
-  filterManualAgainstTransactions,
+  filterManualEntries,
+  incomeIdentityKey,
   type ManualIncomeEntry,
-  transactionDedupeKeys,
 } from "@/lib/income-import";
 import { EXCLUDED_INCOME_TRANSACTION_IDS } from "@/lib/data/income-exclusions";
 import type { CommissionResult, SideBreakdown } from "@/lib/commission";
@@ -262,6 +262,55 @@ export type TransactionIncomeInput = {
   parties: TransactionParty[];
 };
 
+function isTeamSteadyTransaction(input: TransactionIncomeInput): boolean {
+  const { transaction, commission, parties } = input;
+  const extracted = coerceExtractedData(transaction.extracted_data);
+  const autofill = resolveCommissionAutofill(parties, extracted);
+  const buyerTs = findAgentIdByName(extracted.buyerAgentName);
+  const listingTs = findAgentIdByName(extracted.listingAgentName);
+  return (
+    autofill != null ||
+    !!buyerTs ||
+    !!listingTs ||
+    isNickAgentFromCommission(commission) ||
+    (commission != null && hasSavedCommission(commission))
+  );
+}
+
+function transactionIncomeIdentity(input: TransactionIncomeInput): string | null {
+  const extracted = coerceExtractedData(input.transaction.extracted_data);
+  const street = extracted.propertyAddress?.split(",")[0]?.trim();
+  if (!street) return null;
+  const autofill = resolveCommissionAutofill(input.parties, extracted);
+  const agentLabel = primaryAgentLabel(input.commission, autofill, extracted);
+  if (agentLabel === "—") return null;
+  return incomeIdentityKey(street, agentLabel);
+}
+
+function classifyTransactionsForManualFilter(inputs: TransactionIncomeInput[]): {
+  handledIdentities: Set<string>;
+  cancelledIdentities: Set<string>;
+} {
+  const handledIdentities = new Set<string>();
+  const cancelledIdentities = new Set<string>();
+
+  for (const input of inputs) {
+    const identity = transactionIncomeIdentity(input);
+    if (!identity) continue;
+
+    if (resolveStatus(input.transaction) === "cancelled") {
+      cancelledIdentities.add(identity);
+      continue;
+    }
+
+    if (!isTeamSteadyTransaction(input)) continue;
+    const closeDate = coerceExtractedData(input.transaction.extracted_data).closingDate;
+    if (closeDate) handledIdentities.add(identity);
+  }
+
+  return { handledIdentities, cancelledIdentities };
+}
+
 export function buildTransactionIncomeRow(
   input: TransactionIncomeInput,
   paidKeys: Set<string>
@@ -274,17 +323,9 @@ export function buildTransactionIncomeRow(
   const closeDate = extracted.closingDate;
   if (!closeDate) return null;
 
-  const autofill = resolveCommissionAutofill(parties, extracted);
-  const buyerTs = findAgentIdByName(extracted.buyerAgentName);
-  const listingTs = findAgentIdByName(extracted.listingAgentName);
-  const teamSteady =
-    autofill != null ||
-    !!buyerTs ||
-    !!listingTs ||
-    isNickAgentFromCommission(commission) ||
-    (commission != null && hasSavedCommission(commission));
+  if (!isTeamSteadyTransaction(input)) return null;
 
-  if (!teamSteady) return null;
+  const autofill = resolveCommissionAutofill(parties, extracted);
 
   const grossAmount = estimatePayout(commission, autofill);
   const isNickAgent =
@@ -348,10 +389,12 @@ export function buildIncomeRows(
         !(r.transactionId != null && EXCLUDED_INCOME_TRANSACTION_IDS.has(r.transactionId))
     );
 
-  const txKeys = transactionDedupeKeys(dealRows);
-  const { kept: manualForYear } = filterManualAgainstTransactions(
+  const { handledIdentities, cancelledIdentities } =
+    classifyTransactionsForManualFilter(inputs);
+  const { kept: manualForYear } = filterManualEntries(
     manualEntries.filter((e) => e.year === year),
-    txKeys
+    handledIdentities,
+    cancelledIdentities
   );
   const manualRows = manualForYear.map((e) => buildManualIncomeRow(e, paidKeys));
 

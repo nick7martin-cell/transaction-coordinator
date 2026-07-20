@@ -63,6 +63,11 @@ export function incomeDedupeKey(
   return `${closeDate}|${normalizeIncomeAddress(address)}|${side}`;
 }
 
+/** Stable deal identity — address + side, ignoring close date. */
+export function incomeIdentityKey(address: string, agentLabel: string): string {
+  return `${normalizeIncomeAddress(address)}|${agentSideKey(agentLabel)}`;
+}
+
 export function manualIncomeRowId(
   closeDate: string,
   address: string,
@@ -190,6 +195,32 @@ export function transactionDedupeKeys(rows: IncomeRow[]): Set<string> {
   );
 }
 
+export function transactionIdentityKeys(rows: IncomeRow[]): Set<string> {
+  return new Set(
+    rows
+      .filter((r) => !r.isBasePay && r.transactionId)
+      .map((r) => incomeIdentityKey(r.address, r.agentLabel))
+  );
+}
+
+export function filterManualEntries(
+  manual: ManualIncomeEntry[],
+  handledIdentities: Set<string>,
+  cancelledIdentities: Set<string>
+): { kept: ManualIncomeEntry[]; skipped: number } {
+  let skipped = 0;
+  const kept = manual.filter((entry) => {
+    const identity = incomeIdentityKey(entry.address, entry.agentLabel);
+    if (cancelledIdentities.has(identity) || handledIdentities.has(identity)) {
+      skipped += 1;
+      return false;
+    }
+    return true;
+  });
+  return { kept, skipped };
+}
+
+/** @deprecated Prefer filterManualEntries with identity keys from live transactions. */
 export function filterManualAgainstTransactions(
   manual: ManualIncomeEntry[],
   transactionKeys: Set<string>
@@ -206,19 +237,33 @@ export function filterManualAgainstTransactions(
   return { kept, skipped };
 }
 
-/** Collapse duplicate deal rows (Handled + sheet import) — prefer live transaction. */
+/** Collapse duplicate deal rows — one row per address + side; prefer live Handled transaction. */
 export function dedupeDealRows(rows: IncomeRow[]): IncomeRow[] {
   const map = new Map<string, IncomeRow>();
   for (const row of rows) {
     if (row.isBasePay) continue;
-    const key = incomeDedupeKey(row.closeDate, row.address, row.agentLabel);
-    const existing = map.get(key);
+    const identity = incomeIdentityKey(row.address, row.agentLabel);
+    const existing = map.get(identity);
     if (!existing) {
-      map.set(key, row);
+      map.set(identity, row);
       continue;
     }
     if (!existing.transactionId && row.transactionId) {
-      map.set(key, row);
+      map.set(identity, row);
+      continue;
+    }
+    if (existing.transactionId && row.transactionId) {
+      if (existing.transactionId === row.transactionId) {
+        map.set(identity, row);
+      }
+      continue;
+    }
+    // Two manual rows for same deal — keep the one with the later close date.
+    if (
+      new Date(row.closeDate + "T12:00:00").getTime() >
+      new Date(existing.closeDate + "T12:00:00").getTime()
+    ) {
+      map.set(identity, row);
     }
   }
   const deduped = [...map.values()];

@@ -969,14 +969,6 @@
   },
   {
     "closeDate": "2026-07-06",
-    "address": "10855 President Dr",
-    "amount": 50,
-    "agentLabel": "Luke - Listing",
-    "isNickDeal": false,
-    "paid": false
-  },
-  {
-    "closeDate": "2026-07-06",
     "address": "2636 226th Lane NE",
     "amount": 50,
     "agentLabel": "Collin - Listing",
@@ -1136,15 +1128,7 @@
     "paid": false
   },
   {
-    "closeDate": "2026-07-30",
-    "address": "9743 Almond Ave",
-    "amount": 11333.5,
-    "agentLabel": "Nick - Buy Side",
-    "isNickDeal": true,
-    "paid": false
-  },
-  {
-    "closeDate": "2026-07-14",
+    "closeDate": "2026-07-31",
     "address": "11309 France Ave",
     "amount": 50,
     "agentLabel": "Jeremy - Listing",
