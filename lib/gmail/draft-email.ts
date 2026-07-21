@@ -1,4 +1,8 @@
+import { adminCcForAgent } from "@/lib/agents";
+
 export type OpeningEmailDraftInput = {
+  /** Team Steady agent on this deal — used to CC their admin assistant. */
+  teamSteadyAgentId?: string | null;
   propertyAddress: string | null;
   inspectionPeriodDays: number | null;
   lenderEmail?: string | null;
@@ -81,6 +85,7 @@ export function buildOpeningEmailDraft(
     nonEmptyEmail(input.buyerAgentEmail),
     nonEmptyEmail(input.listingEmail),
     ALWAYS_CC,
+    ...adminCcForAgent(input.teamSteadyAgentId),
   ]);
 
   // ── Determine whether the forward-to-title prompt is needed ────────────────

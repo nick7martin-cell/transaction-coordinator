@@ -100,3 +100,14 @@ export const MENTOR_MAP: Record<string, string[]> = {
   "brett-lizotte": ["kolin-kiekhoefer"],
   "collin-anderson": ["hubert-ngabirano"],
 };
+
+/** Admin assistants CC'd on all Gmail drafts for an agent's deals. */
+export const AGENT_ADMIN_CC: Partial<Record<string, string[]>> = {
+  "collin-anderson": ["savannah@teamsteadyrealestate.com"],
+  "lucas-hansen": ["savannah@teamsteadyrealestate.com"],
+};
+
+export function adminCcForAgent(agentId: string | null | undefined): string[] {
+  if (!agentId) return [];
+  return AGENT_ADMIN_CC[agentId] ?? [];
+}

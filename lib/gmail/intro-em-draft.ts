@@ -1,4 +1,4 @@
-import { findAgent, findAgentIdByName, teamSteadyEmailFor } from "@/lib/agents";
+import { findAgent, findAgentIdByName, teamSteadyEmailFor, adminCcForAgent } from "@/lib/agents";
 import { formatCurrency } from "@/lib/format";
 import type { OpeningEmailDraft } from "@/lib/gmail/draft-email";
 
@@ -159,7 +159,10 @@ export function buildIntroEmEmailDraft(input: IntroEmDraftInput): OpeningEmailDr
   const agentFirst = agentFirstName(input.agentId);
   const earnestPhrase = earnestMoneyPhrase(input.earnestMoney);
 
-  const cc = uniqueEmails([agentEmail(input.agentId) ?? ""]);
+  const cc = uniqueEmails([
+    agentEmail(input.agentId) ?? "",
+    ...adminCcForAgent(input.agentId),
+  ]);
 
   const insurance = INSURANCE_CONTACTS[input.agentId];
 

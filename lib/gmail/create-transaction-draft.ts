@@ -25,6 +25,20 @@ function resolveTeamSteadySide(parties: Party[]): "buyer" | "seller" {
   return "buyer";
 }
 
+function resolveTeamSteadyAgentId(parties: Party[]): string | null {
+  const buyerAgent = parties.find((p) => p.role === "buyer_agent");
+  const listingAgent = parties.find((p) => p.role === "listing_agent");
+  if (buyerAgent?.name) {
+    const id = findAgentIdByName(buyerAgent.name);
+    if (id) return id;
+  }
+  if (listingAgent?.name) {
+    const id = findAgentIdByName(listingAgent.name);
+    if (id) return id;
+  }
+  return null;
+}
+
 /**
  * Create a Gmail draft for a transaction using saved worksheet contacts.
  * Throws on failure so API routes can return errors to the client.
@@ -71,6 +85,7 @@ export async function createTransactionGmailDraft(
       typeof txn.inspection_period_days === "number"
         ? txn.inspection_period_days
         : null,
+    teamSteadyAgentId: resolveTeamSteadyAgentId(parties),
     lenderEmail:       worksheetString(ws, "lenderEmail"),
     buyerCloserEmail:  worksheetString(ws, "buyerCloserEmail"),
     sellerCloserEmail: worksheetString(ws, "sellerCloserEmail"),
