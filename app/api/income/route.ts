@@ -152,7 +152,7 @@ export async function PATCH(req: Request) {
             { status: 503 }
           );
         }
-        await saveCloseDateOverride(id, closeDate, trackerState.closeDateOverrides);
+        await saveCloseDateOverride(id, closeDate, trackerState);
       }
     }
 

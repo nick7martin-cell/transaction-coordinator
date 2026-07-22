@@ -406,7 +406,7 @@ export function buildIncomeRows(
   );
 
   const merged = dedupeDealRows([...dealRows, ...manualRows]).map((row) => {
-    if (row.isBasePay || row.transactionId) return row;
+    if (row.isBasePay) return row;
     const override = closeDateOverrides[row.id];
     return override ? incomeRowWithCloseDate(row, override) : row;
   });

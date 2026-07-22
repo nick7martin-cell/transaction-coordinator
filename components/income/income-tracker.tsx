@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
@@ -205,8 +204,9 @@ function EditableCloseDate({
   }, [editing]);
 
   function commit() {
+    const next = inputRef.current?.value || local;
     setEditing(false);
-    if (local && local !== row.closeDate) onSave(row.id, local);
+    if (next && next !== row.closeDate) onSave(row.id, next);
   }
 
   if (row.isBasePay) {
@@ -227,7 +227,10 @@ function EditableCloseDate({
         onChange={(e) => setLocal(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
           if (e.key === "Escape") {
             setLocal(row.closeDate);
             setEditing(false);
@@ -768,7 +771,6 @@ function AgentDealsSection({
 }
 
 export function IncomeTrackerView() {
-  const pathname = usePathname();
   const [year, setYear] = useState(new Date().getFullYear());
   const [data, setData] = useState<IncomeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -811,18 +813,41 @@ export function IncomeTrackerView() {
     [data]
   );
 
-  const applyDefaultExpandedMonths = useCallback(() => {
-    setExpandedMonths(defaultExpandedMonthKeys(monthKeys));
-  }, [monthKeys]);
 
   useEffect(() => {
-    if (pathname !== "/income") return;
-    applyDefaultExpandedMonths();
-  }, [pathname, applyDefaultExpandedMonths]);
+    setExpandedMonths(new Set());
+  }, [year]);
+
+  useEffect(() => {
+    if (monthKeys.length === 0) return;
+    setExpandedMonths((prev) =>
+      prev.size === 0 ? defaultExpandedMonthKeys(monthKeys) : prev
+    );
+  }, [monthKeys]);
 
   async function saveCloseDate(id: string, closeDate: string) {
     setSavingCloseDateId(id);
     setError(null);
+
+    setData((prev) => {
+      if (!prev) return prev;
+      const rows = prev.rows.map((r) =>
+        r.id === id ? incomeRowWithCloseDate(r, closeDate) : r
+      );
+      return {
+        ...prev,
+        rows,
+        summary: computeIncomeSummary(rows, prev.year),
+      };
+    });
+
+    const movedMonth = closeDate.slice(0, 7);
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      next.add(movedMonth);
+      return next;
+    });
+
     try {
       const res = await fetch("/api/income", {
         method: "PATCH",
@@ -831,16 +856,10 @@ export function IncomeTrackerView() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to update close date");
-
-      const movedMonth = closeDate.slice(0, 7);
-      setExpandedMonths((prev) => {
-        const next = new Set(prev);
-        next.add(movedMonth);
-        return next;
-      });
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update close date");
+      await load();
     } finally {
       setSavingCloseDateId(null);
     }
