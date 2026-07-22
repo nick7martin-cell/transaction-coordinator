@@ -88,6 +88,7 @@ ALTER TABLE transaction_meta
 CREATE TABLE IF NOT EXISTS income_tracker (
   id         TEXT        PRIMARY KEY DEFAULT 'default',
   paid_keys  JSONB       DEFAULT '[]'::jsonb,
+  close_date_overrides JSONB DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -7,6 +7,7 @@ import {
   type ManualIncomeEntry,
 } from "@/lib/income-import";
 import { EXCLUDED_INCOME_TRANSACTION_IDS } from "@/lib/data/income-exclusions";
+import { incomeRowWithCloseDate } from "@/lib/income-close-date";
 import type { CommissionResult, SideBreakdown } from "@/lib/commission";
 import { hasSavedCommission, resolveCommissionAutofill } from "@/lib/commission-autofill";
 import { resolveStatus } from "@/lib/transaction-lifecycle";
@@ -378,7 +379,8 @@ export function buildIncomeRows(
   inputs: TransactionIncomeInput[],
   paidKeys: Set<string>,
   year: number,
-  manualEntries: ManualIncomeEntry[] = []
+  manualEntries: ManualIncomeEntry[] = [],
+  closeDateOverrides: Record<string, string> = {}
 ): IncomeRow[] {
   const dealRows = inputs
     .map((input) => buildTransactionIncomeRow(input, paidKeys))
@@ -403,9 +405,15 @@ export function buildIncomeRows(
     buildBasePayRow(mk, paidKeys)
   );
 
-  const merged = dedupeDealRows([...dealRows, ...manualRows]);
+  const merged = dedupeDealRows([...dealRows, ...manualRows]).map((row) => {
+    if (row.isBasePay || row.transactionId) return row;
+    const override = closeDateOverrides[row.id];
+    return override ? incomeRowWithCloseDate(row, override) : row;
+  });
 
-  return [...baseRows, ...merged].sort((a, b) => {
+  const yearDealRows = merged.filter((row) => row.closeDate.startsWith(String(year)));
+
+  return [...baseRows, ...yearDealRows].sort((a, b) => {
     if (a.isBasePay !== b.isBasePay) return a.isBasePay ? -1 : 1;
     return (
       new Date(a.closeDate + "T12:00:00").getTime() -

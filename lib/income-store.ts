@@ -18,6 +18,10 @@ export type PaidKeysState = {
   writable: boolean;
 };
 
+export type IncomeTrackerState = PaidKeysState & {
+  closeDateOverrides: Record<string, string>;
+};
+
 function seedRowForEntry(entry: ManualIncomeEntry) {
   return seedRows2026.find(
     (r) =>
@@ -57,25 +61,62 @@ export function manualEntriesForYear(year: number): ManualIncomeEntry[] {
   return [];
 }
 
-export async function loadPaidKeys(): Promise<PaidKeysState> {
-  const { data, error } = await supabase
+function coerceCloseDateOverrides(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+export async function loadIncomeTrackerState(): Promise<IncomeTrackerState> {
+  let data: Record<string, unknown> | null = null;
+  let errorMessage: string | null = null;
+
+  const full = await supabase
     .from("income_tracker")
-    .select("paid_keys")
+    .select("paid_keys, close_date_overrides")
     .eq("id", TRACKER_ID)
     .maybeSingle();
 
-  if (error) {
-    if (isIncomeTrackerAccessError(error.message)) {
-      return { keys: defaultPaidKeysFromSeed(), writable: false };
+  if (full.error?.message.includes("close_date_overrides")) {
+    const paidOnly = await supabase
+      .from("income_tracker")
+      .select("paid_keys")
+      .eq("id", TRACKER_ID)
+      .maybeSingle();
+    data = paidOnly.data as Record<string, unknown> | null;
+    errorMessage = paidOnly.error?.message ?? null;
+  } else {
+    data = full.data as Record<string, unknown> | null;
+    errorMessage = full.error?.message ?? null;
+  }
+
+  if (errorMessage) {
+    if (isIncomeTrackerAccessError(errorMessage)) {
+      return {
+        keys: defaultPaidKeysFromSeed(),
+        closeDateOverrides: {},
+        writable: false,
+      };
     }
-    throw new Error(error.message);
+    throw new Error(errorMessage);
   }
 
   const raw = data?.paid_keys;
   return {
     keys: new Set(Array.isArray(raw) ? raw.map(String) : []),
+    closeDateOverrides: coerceCloseDateOverrides(data?.close_date_overrides),
     writable: true,
   };
+}
+
+export async function loadPaidKeys(): Promise<PaidKeysState> {
+  const state = await loadIncomeTrackerState();
+  return { keys: state.keys, writable: state.writable };
 }
 
 export async function savePaidKeys(keys: Set<string>): Promise<void> {
@@ -96,6 +137,30 @@ export async function savePaidKeys(keys: Set<string>): Promise<void> {
     }
     throw new Error(error.message);
   }
+}
+
+export async function saveCloseDateOverride(
+  rowId: string,
+  closeDate: string,
+  existingOverrides: Record<string, string>
+): Promise<Record<string, string>> {
+  const close_date_overrides = { ...existingOverrides, [rowId]: closeDate };
+  const { error } = await supabase
+    .from("income_tracker")
+    .update({
+      close_date_overrides,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", TRACKER_ID);
+  if (error) {
+    if (isIncomeTrackerAccessError(error.message)) {
+      throw new Error(
+        "Cannot save close date — run supabase-income-tracker-fix.sql in Supabase SQL Editor."
+      );
+    }
+    throw new Error(error.message);
+  }
+  return close_date_overrides;
 }
 
 /** Seed paid_keys once on first setup. After that, paid_keys in Supabase is the source of truth. */

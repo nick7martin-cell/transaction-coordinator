@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
@@ -19,6 +19,7 @@ import {
   type IncomeRow,
   type IncomeSummary,
 } from "@/lib/income-tracker";
+import { incomeRowWithCloseDate } from "@/lib/income-close-date";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -152,16 +153,22 @@ function BasePayStrip({
 }
 
 function DealAddress({ row }: { row: IncomeRow }) {
-  const className =
-    "block min-w-0 truncate font-medium text-ink hover:text-brand transition-colors";
+  const linkedClassName =
+    "block min-w-0 truncate font-medium text-brand underline-offset-2 hover:underline transition-colors";
+  const plainClassName = "block min-w-0 truncate font-medium text-ink";
+
   return (
     <div className="flex min-w-0 items-baseline gap-2 overflow-hidden">
       {row.transactionId ? (
-        <Link href={`/transactions/${row.transactionId}`} className={className} title={row.address}>
+        <Link
+          href={`/transactions/${row.transactionId}`}
+          className={linkedClassName}
+          title={`Open ${row.address} in Handled`}
+        >
           {row.address}
         </Link>
       ) : (
-        <span className={className} title={row.address}>
+        <span className={plainClassName} title={row.address}>
           {row.address}
         </span>
       )}
@@ -171,6 +178,83 @@ function DealAddress({ row }: { row: IncomeRow }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+function EditableCloseDate({
+  row,
+  saving,
+  onSave,
+  className,
+}: {
+  row: IncomeRow;
+  saving: boolean;
+  onSave: (id: string, closeDate: string) => void;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState(row.closeDate);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) setLocal(row.closeDate);
+  }, [row.closeDate, editing]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  function commit() {
+    setEditing(false);
+    if (local && local !== row.closeDate) onSave(row.id, local);
+  }
+
+  if (row.isBasePay) {
+    return (
+      <time dateTime={row.closeDate} className={className}>
+        {formatDate(row.closeDate)}
+      </time>
+    );
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="date"
+        value={local}
+        disabled={saving}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            setLocal(row.closeDate);
+            setEditing(false);
+          }
+        }}
+        className={cn(
+          "w-full max-w-[9.5rem] rounded-lg border border-line bg-surface px-2 py-1 text-sm text-ink tabular-nums focus:outline-none focus:ring-2 focus:ring-brand/15 disabled:opacity-50",
+          className
+        )}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      onClick={() => setEditing(true)}
+      className={cn(
+        "text-left text-sm tabular-nums whitespace-nowrap transition-colors disabled:opacity-50",
+        "text-ink-soft hover:text-brand hover:underline underline-offset-2",
+        className
+      )}
+      title="Click to edit close date"
+    >
+      {formatDate(row.closeDate)}
+    </button>
   );
 }
 
@@ -208,12 +292,16 @@ function DealAgentCell({ row }: { row: IncomeRow }) {
 function DealGridRow({
   row,
   togglingId,
+  savingCloseDateId,
   onTogglePaid,
+  onSaveCloseDate,
   showMonth,
 }: {
   row: IncomeRow;
   togglingId: string | null;
+  savingCloseDateId: string | null;
   onTogglePaid: (id: string, paid: boolean) => void;
+  onSaveCloseDate: (id: string, closeDate: string) => void;
   showMonth: boolean;
 }) {
   return (
@@ -224,12 +312,11 @@ function DealGridRow({
         row.paid ? "bg-good/15" : "bg-warn/10"
       )}
     >
-      <time
-        dateTime={row.closeDate}
-        className="text-sm tabular-nums text-ink-soft whitespace-nowrap"
-      >
-        {formatDate(row.closeDate)}
-      </time>
+      <EditableCloseDate
+        row={row}
+        saving={savingCloseDateId === row.id}
+        onSave={onSaveCloseDate}
+      />
       {showMonth ? (
         <span className="text-sm text-ink-soft whitespace-nowrap">
           {formatMonthLabel(row.monthKey).replace(/ \d{4}$/, "")}
@@ -286,7 +373,9 @@ function DealGridHeader({ showMonth }: { showMonth: boolean }) {
 function DealGridList({
   rows,
   togglingId,
+  savingCloseDateId,
   onTogglePaid,
+  onSaveCloseDate,
   showMonth = false,
   dealCount,
   total,
@@ -294,7 +383,9 @@ function DealGridList({
 }: {
   rows: IncomeRow[];
   togglingId: string | null;
+  savingCloseDateId: string | null;
   onTogglePaid: (id: string, paid: boolean) => void;
+  onSaveCloseDate: (id: string, closeDate: string) => void;
   showMonth?: boolean;
   dealCount: number;
   total: number;
@@ -309,7 +400,9 @@ function DealGridList({
           key={row.id}
           row={row}
           togglingId={togglingId}
+          savingCloseDateId={savingCloseDateId}
           onTogglePaid={onTogglePaid}
+          onSaveCloseDate={onSaveCloseDate}
           showMonth={showMonth}
         />
       ))}
@@ -330,12 +423,16 @@ function DealGridList({
 function DealCardList({
   rows,
   togglingId,
+  savingCloseDateId,
   onTogglePaid,
+  onSaveCloseDate,
   showMonth = false,
 }: {
   rows: IncomeRow[];
   togglingId: string | null;
+  savingCloseDateId: string | null;
   onTogglePaid: (id: string, paid: boolean) => void;
+  onSaveCloseDate: (id: string, closeDate: string) => void;
   showMonth?: boolean;
 }) {
   return (
@@ -352,7 +449,12 @@ function DealCardList({
             <div className="min-w-0 space-y-1">
               <DealAddress row={row} />
               <p className="truncate text-xs text-ink-soft">
-                {formatDate(row.closeDate)}
+                <EditableCloseDate
+                  row={row}
+                  saving={savingCloseDateId === row.id}
+                  onSave={onSaveCloseDate}
+                  className="inline text-xs"
+                />
                 {showMonth
                   ? ` · ${formatMonthLabel(row.monthKey).replace(/ \d{4}$/, "")}`
                   : null}
@@ -385,13 +487,17 @@ function DealCardList({
 function DealTable({
   rows,
   togglingId,
+  savingCloseDateId,
   onTogglePaid,
+  onSaveCloseDate,
   showMonth = false,
   basePayAmount = 0,
 }: {
   rows: IncomeRow[];
   togglingId: string | null;
+  savingCloseDateId: string | null;
   onTogglePaid: (id: string, paid: boolean) => void;
+  onSaveCloseDate: (id: string, closeDate: string) => void;
   showMonth?: boolean;
   basePayAmount?: number;
 }) {
@@ -406,14 +512,18 @@ function DealTable({
       <DealCardList
         rows={rows}
         togglingId={togglingId}
+        savingCloseDateId={savingCloseDateId}
         onTogglePaid={onTogglePaid}
+        onSaveCloseDate={onSaveCloseDate}
         showMonth={showMonth}
       />
 
       <DealGridList
         rows={rows}
         togglingId={togglingId}
+        savingCloseDateId={savingCloseDateId}
         onTogglePaid={onTogglePaid}
+        onSaveCloseDate={onSaveCloseDate}
         showMonth={showMonth}
         dealCount={dealCount}
         total={total}
@@ -496,14 +606,18 @@ function MonthSection({
   monthKey,
   rows,
   togglingId,
+  savingCloseDateId,
   onTogglePaid,
+  onSaveCloseDate,
   expanded,
   onToggleExpanded,
 }: {
   monthKey: string;
   rows: IncomeRow[];
   togglingId: string | null;
+  savingCloseDateId: string | null;
   onTogglePaid: (id: string, paid: boolean) => void;
+  onSaveCloseDate: (id: string, closeDate: string) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
 }) {
@@ -573,7 +687,9 @@ function MonthSection({
           <DealTable
             rows={dealRows}
             togglingId={togglingId}
+            savingCloseDateId={savingCloseDateId}
             onTogglePaid={onTogglePaid}
+            onSaveCloseDate={onSaveCloseDate}
             basePayAmount={basePayRow?.amount ?? 0}
           />
 
@@ -594,14 +710,18 @@ function AgentDealsSection({
   rows,
   year,
   togglingId,
+  savingCloseDateId,
   onTogglePaid,
+  onSaveCloseDate,
   onBack,
 }: {
   agentName: string;
   rows: IncomeRow[];
   year: number;
   togglingId: string | null;
+  savingCloseDateId: string | null;
   onTogglePaid: (id: string, paid: boolean) => void;
+  onSaveCloseDate: (id: string, closeDate: string) => void;
   onBack: () => void;
 }) {
   const total = rows.reduce((s, r) => s + r.amount, 0);
@@ -635,7 +755,14 @@ function AgentDealsSection({
         </div>
       </div>
 
-      <DealTable rows={rows} togglingId={togglingId} onTogglePaid={onTogglePaid} showMonth />
+      <DealTable
+        rows={rows}
+        togglingId={togglingId}
+        savingCloseDateId={savingCloseDateId}
+        onTogglePaid={onTogglePaid}
+        onSaveCloseDate={onSaveCloseDate}
+        showMonth
+      />
     </section>
   );
 }
@@ -647,6 +774,7 @@ export function IncomeTrackerView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [savingCloseDateId, setSavingCloseDateId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
@@ -691,6 +819,32 @@ export function IncomeTrackerView() {
     if (pathname !== "/income") return;
     applyDefaultExpandedMonths();
   }, [pathname, applyDefaultExpandedMonths]);
+
+  async function saveCloseDate(id: string, closeDate: string) {
+    setSavingCloseDateId(id);
+    setError(null);
+    try {
+      const res = await fetch("/api/income", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, closeDate }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to update close date");
+
+      const movedMonth = closeDate.slice(0, 7);
+      setExpandedMonths((prev) => {
+        const next = new Set(prev);
+        next.add(movedMonth);
+        return next;
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update close date");
+    } finally {
+      setSavingCloseDateId(null);
+    }
+  }
 
   async function togglePaid(id: string, paid: boolean) {
     setTogglingId(id);
@@ -817,7 +971,9 @@ export function IncomeTrackerView() {
                   rows={agentDeals}
                   year={year}
                   togglingId={togglingId}
+                  savingCloseDateId={savingCloseDateId}
                   onTogglePaid={togglePaid}
+                  onSaveCloseDate={saveCloseDate}
                   onBack={() => setSelectedAgent(null)}
                 />
               ) : monthKeys.length === 0 ? (
@@ -835,7 +991,9 @@ export function IncomeTrackerView() {
                     monthKey={mk}
                     rows={byMonth.get(mk) ?? []}
                     togglingId={togglingId}
+                    savingCloseDateId={savingCloseDateId}
                     onTogglePaid={togglePaid}
+                    onSaveCloseDate={saveCloseDate}
                     expanded={expandedMonths.has(mk)}
                     onToggleExpanded={() =>
                       setExpandedMonths((prev) => {
