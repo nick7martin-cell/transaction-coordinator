@@ -1016,6 +1016,14 @@
     "paid": false
   },
   {
+    "closeDate": "2026-07-10",
+    "address": "3865 Ridge Drive North",
+    "amount": 50,
+    "agentLabel": "Luke - Buy Side",
+    "isNickDeal": false,
+    "paid": true
+  },
+  {
     "closeDate": "2026-07-14",
     "address": "15822 Fleet Trail",
     "amount": 50,
