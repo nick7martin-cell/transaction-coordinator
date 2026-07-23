@@ -1093,7 +1093,7 @@
     "amount": 50,
     "agentLabel": "Brett - Buy Side",
     "isNickDeal": false,
-    "paid": false
+    "paid": true
   },
   {
     "closeDate": "2026-07-20",
