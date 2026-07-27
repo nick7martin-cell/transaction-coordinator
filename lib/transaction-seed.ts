@@ -47,6 +47,19 @@ export function resolveTeamSteadySide(d: ExtractedData): "buyer" | "seller" {
   return "buyer";
 }
 
+/** Infer Team Steady side from confirmed parties roster (after dual-agency resolution). */
+export function resolveTeamSteadySideFromParties(
+  parties: TransactionParty[]
+): "buyer" | "seller" | null {
+  for (const p of parties) {
+    if (p.role === "buyer_agent" && findAgentIdByName(p.name)) return "buyer";
+  }
+  for (const p of parties) {
+    if (p.role === "listing_agent" && findAgentIdByName(p.name)) return "seller";
+  }
+  return null;
+}
+
 export type TitleContactInfo = {
   company: string;
   name: string;

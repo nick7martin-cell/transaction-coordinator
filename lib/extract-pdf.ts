@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   buildExtractionPrompt,
   buildSupplementalExtractionPrompt,
+  partiesForSupplementalPrompt,
   summarizePartiesForPrompt,
 } from "@/lib/extraction-prompt";
 import type { ExtractedData, TransactionParty } from "@/lib/types";
@@ -205,6 +206,7 @@ export async function extractSupplementalContacts(
   context: {
     propertyAddress: string | null;
     existingParties?: TransactionParty[];
+    teamSteadySide?: "buyer" | "seller" | null;
   }
 ): Promise<ExtractedData> {
   if (documents.length === 0 && !notes?.trim()) {
@@ -238,13 +240,17 @@ export async function extractSupplementalContacts(
     type: "text",
     text: buildSupplementalExtractionPrompt({
       propertyAddress: context.propertyAddress,
+      teamSteadySide: context.teamSteadySide ?? null,
       knownParties: summarizePartiesForPrompt(
-        (context.existingParties ?? []).map((p) => ({
-          role: p.role,
-          name: p.name,
-          company: p.company,
-          email: p.email,
-        }))
+        partiesForSupplementalPrompt(
+          (context.existingParties ?? []).map((p) => ({
+            role: p.role,
+            name: p.name,
+            company: p.company,
+            email: p.email,
+          })),
+          context.teamSteadySide ?? null
+        )
       ),
     }),
   });

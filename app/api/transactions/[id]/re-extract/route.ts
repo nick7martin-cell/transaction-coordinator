@@ -2,7 +2,11 @@ import {
   extractFromDocuments,
   extractSupplementalContacts,
 } from "@/lib/extract-pdf";
-import { mergeExtractedData, applySupplementalLenderOverride } from "@/lib/extraction-merge";
+import {
+  mergeExtractedData,
+  applySupplementalLenderOverride,
+  applySupplementalTitleOverride,
+} from "@/lib/extraction-merge";
 import { mergeWorksheetFromParties } from "@/lib/parties-worksheet";
 import { mergePartiesFromExtraction } from "@/lib/party-merge";
 import { supabase } from "@/lib/supabase";
@@ -10,6 +14,7 @@ import { buildTransactionUpdate } from "@/lib/transaction-db";
 import {
   ensureDefaultTitleParties,
   mergeLenderFromExtraction,
+  resolveTeamSteadySideFromParties,
 } from "@/lib/transaction-seed";
 import { mergeConcessionsIntoWorksheet } from "@/lib/worksheet-defaults";
 import { preserveLifecycleInExtracted } from "@/lib/transaction-lifecycle";
@@ -95,6 +100,8 @@ export async function POST(
       ? (wsParties as TransactionParty[])
       : [];
 
+    const teamSteadySide = resolveTeamSteadySideFromParties(existingParties);
+
     let incoming;
     if (hasPdf) {
       const documents = await filesToExtractionDocuments(
@@ -115,11 +122,13 @@ export async function POST(
       incoming = await extractSupplementalContacts(documents, notes, {
         propertyAddress: current.propertyAddress,
         existingParties,
+        teamSteadySide,
       });
     }
 
     const { merged: baseMerged, filled } = mergeExtractedData(current, incoming);
-    const merged = applySupplementalLenderOverride(baseMerged, incoming);
+    let merged = applySupplementalLenderOverride(baseMerged, incoming);
+    merged = applySupplementalTitleOverride(merged, incoming, teamSteadySide);
 
     const {
       parties: mergedParties,

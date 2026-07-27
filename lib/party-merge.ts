@@ -74,15 +74,18 @@ function hasTitleInfo(info: {
   return !!(info.company.trim() || info.name.trim() || info.email.trim() || info.phone.trim());
 }
 
-/** Default Watermark/Ingrid seed — replace when supplemental extraction names a different title co. */
-function isDefaultSeededTitle(party: TransactionParty): boolean {
+/** Auto-seeded Team Steady title contacts — replace when supplemental extraction names someone else. */
+function isReplaceableDefaultTitle(party: TransactionParty): boolean {
   const name = normName(party.name);
   const company = party.company.trim().toLowerCase();
   const email = party.email.trim().toLowerCase();
   return (
     (name.includes("ingrid") && name.includes("bredeson")) ||
     company.includes("watermark") ||
-    email.includes("wmtitle.com")
+    email.includes("wmtitle.com") ||
+    (name.includes("lacey") && name.includes("rentz")) ||
+    company.includes("all american title") ||
+    email.includes("allamericantitleco.com")
   );
 }
 
@@ -118,7 +121,7 @@ function mergeTitleParty(
     const isUnknownSlot = existing.company === OTHER_SIDE_TITLE_UNKNOWN;
 
     const replaceDefault =
-      isDefaultSeededTitle(existing) && extractedTitleDiffers(existing, info);
+      isReplaceableDefaultTitle(existing) && extractedTitleDiffers(existing, info);
 
     if (isUnknownSlot || replaceDefault) {
       next = applyPartyUpdate(next, existing.id, {

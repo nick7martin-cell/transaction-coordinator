@@ -63,7 +63,8 @@ SUPPLEMENTAL SOURCES — CRITICAL:
 - When notes mention title/escrow without specifying buyer vs seller, use sellerTitle* if Team Steady represents the buyer (the other side's title), or buyerTitle* if Team Steady represents the seller.
 - When the same person appears in multiple sources, prefer the most complete contact record.
 - buyerEmails/buyerPhones and sellerEmails/sellerPhones arrays must align by index with buyerNames/sellerNames when possible.
-- Title closer fields: populate buyer-side title in buyerTitle* fields and seller-side / other-side title in sellerTitle* fields.
+- When coordinator notes paste a title closer block (name, company, email, phone) without saying buyer vs seller, treat it as the OTHER side's title — not Team Steady's auto-seeded title contact.
+- When notes say "seller's title" or "other side title", always use sellerTitle* fields on buyer-side deals (and buyerTitle* on listing-side deals).
 - When an email is from or about a Team Steady / Re/Max Results agent on this transaction sharing which title or escrow company they use, map it to THEIR side: buyer agent's title company → buyerTitle* fields; listing agent's title company → sellerTitle* fields.
 - Do not assume Watermark Title for any agent — extract exactly what the email states. Derek Jopp in particular may use different title companies on different deals.
 - Lender fields: extract from pre-approval letters when present AND from email screenshots or notes when they identify the loan officer for this transaction. Set hasPreApprovalLetter true only when a pre-approval/ pre-qualification letter document is actually included — not from a casual email mention alone.
@@ -97,17 +98,27 @@ ${EXTRACTION_JSON_SCHEMA}`;
 export function buildSupplementalExtractionPrompt(context: {
   propertyAddress: string | null;
   knownParties: string;
+  teamSteadySide?: "buyer" | "seller" | null;
 }): string {
+  const sideHint =
+    context.teamSteadySide === "buyer"
+      ? `Team Steady represents the BUYER on this deal. Title/escrow in notes without an explicit side label is the SELLER'S title → use sellerTitle* fields only. Do NOT re-output Lacey Rentz / All American Title / Watermark / Ingrid Bredeson unless notes explicitly say they are the seller's title.`
+      : context.teamSteadySide === "seller"
+        ? `Team Steady represents the LISTING side on this deal. Title/escrow in notes without an explicit side label is the BUYER'S title → use buyerTitle* fields only. Do NOT re-output the listing side's default title contact unless notes explicitly say so.`
+        : `If notes do not say buyer vs seller title, map title to sellerTitle* when Team Steady is the buyer's agent and to buyerTitle* when Team Steady is the listing agent.`;
+
   return `Extract transaction party contact information for a real estate transaction coordinator.
 
 This upload contains ONLY supplemental material (coordinator notes and/or email screenshots) — not a purchase agreement. Focus entirely on finding contact details for everyone involved in the transaction.
 
 Known context for this transaction:
 - Property: ${context.propertyAddress ?? "unknown"}
+- ${sideHint}
 - Existing contacts already on file:
 ${context.knownParties || "  (none yet)"}
 
 When notes or screenshots name a specific lender/loan officer, extract that person even if a different lender is listed above — coordinator notes override defaults.
+When notes name a title company or closer that is NOT already listed above for that side, extract them even if a default title contact exists for the other side.
 
 RULES:
 - Return ONLY valid JSON, no other text, no markdown, no code blocks
@@ -134,4 +145,26 @@ export function summarizePartiesForPrompt(
       return `  - ${parts.join(" · ")}${contact ? ` · ${contact}` : ""}`;
     })
     .join("\n");
+}
+
+/** Omit auto-seeded Team Steady title placeholders from supplemental context so the model extracts from notes. */
+export function partiesForSupplementalPrompt(
+  parties: Array<{ role: string; name: string; company: string; email: string }>,
+  _teamSteadySide: "buyer" | "seller" | null
+): typeof parties {
+  return parties.filter((p) => {
+    if (p.role !== "buyer_title" && p.role !== "seller_title") return true;
+    const name = (p.name ?? "").trim().toLowerCase();
+    const company = (p.company ?? "").trim().toLowerCase();
+    const email = (p.email ?? "").trim().toLowerCase();
+    const isDefault =
+      (name.includes("ingrid") && name.includes("bredeson")) ||
+      company.includes("watermark") ||
+      email.includes("wmtitle.com") ||
+      (name.includes("lacey") && name.includes("rentz")) ||
+      company.includes("all american title") ||
+      email.includes("allamericantitleco.com") ||
+      company === "unknown";
+    return !isDefault;
+  });
 }
