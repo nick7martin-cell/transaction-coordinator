@@ -7,6 +7,7 @@ import {
   type ManualIncomeEntry,
 } from "@/lib/income-import";
 import { EXCLUDED_INCOME_TRANSACTION_IDS } from "@/lib/data/income-exclusions";
+import { incomeAmountOverride } from "@/lib/data/income-amount-overrides";
 import { incomeRowWithCloseDate } from "@/lib/income-close-date";
 import type { CommissionResult, SideBreakdown } from "@/lib/commission";
 import { hasSavedCommission, resolveCommissionAutofill } from "@/lib/commission-autofill";
@@ -407,8 +408,12 @@ export function buildIncomeRows(
 
   const merged = dedupeDealRows([...dealRows, ...manualRows]).map((row) => {
     if (row.isBasePay) return row;
-    const override = closeDateOverrides[row.id];
-    return override ? incomeRowWithCloseDate(row, override) : row;
+    let next = row;
+    const dateOverride = closeDateOverrides[row.id];
+    if (dateOverride) next = incomeRowWithCloseDate(next, dateOverride);
+    const amountOverride = incomeAmountOverride(next.address);
+    if (amountOverride != null) next = { ...next, amount: amountOverride };
+    return next;
   });
 
   const yearDealRows = merged.filter((row) => row.closeDate.startsWith(String(year)));
