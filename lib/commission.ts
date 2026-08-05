@@ -11,6 +11,21 @@ export interface ReferralConfig {
   recipientKey: string;
   /** When recipientKey === "other" */
   recipientOther?: string;
+  /** Two or more team referral recipients — uses Nick's full $50 off the top. */
+  teamRecipients?: TeamReferralRecipient[];
+}
+
+export interface TeamReferralRecipient {
+  recipientKey: string;
+  recipientOther?: string;
+  /** Percentage of total commission for this referral recipient. */
+  pct: number;
+}
+
+export interface TeamReferralPayout {
+  agentName: string;
+  pct: number;
+  amount: number;
 }
 
 export interface SideBreakdown {
@@ -39,6 +54,8 @@ export interface SideBreakdown {
   /** Team referral — second team agent's net amount */
   teamReferralAgentName?: string | null;
   teamReferralAmount?: number;
+  /** Multiple team referral payouts (when two or more recipients). */
+  teamReferrals?: TeamReferralPayout[];
 }
 
 export interface CommissionResult {
@@ -121,6 +138,102 @@ export function resolveReferralRecipientName(
   return REFERRAL_NAME_LOOKUP[recipientKey] ?? recipientKey;
 }
 
+/** Normalize saved referral config to a list of team recipients (0–N). */
+export function teamRecipientsFromConfig(referral: ReferralConfig): TeamReferralRecipient[] {
+  if (referral.type !== "team") return [];
+  if (referral.teamRecipients?.length) return referral.teamRecipients;
+  if (referral.recipientKey && referral.pct > 0) {
+    return [
+      {
+        recipientKey: referral.recipientKey,
+        recipientOther: referral.recipientOther,
+        pct: referral.pct,
+      },
+    ];
+  }
+  return [];
+}
+
+export function isMultiTeamReferral(referral: ReferralConfig): boolean {
+  return referral.type === "team" && teamRecipientsFromConfig(referral).length >= 2;
+}
+
+/**
+ * Multiple team referrals: Nick's full $50 off the top, each recipient gets their
+ * % of total commission, primary agent receives the remainder. No Sam/Taylor/Lars split.
+ */
+export function applyMultiTeamReferral(
+  b: SideBreakdown,
+  recipients: TeamReferralRecipient[]
+): SideBreakdown {
+  const totalCents = Math.round(b.totalCommission * 100);
+  const nickCents = NICK_TC_FEE * 100;
+
+  const referralCents = recipients.map((r) => Math.round(totalCents * r.pct / 100));
+  const referralSumCents = referralCents.reduce((sum, c) => sum + c, 0);
+  let primaryCents = totalCents - nickCents - referralSumCents;
+
+  // Absorb cent rounding on the primary agent so the breakdown sums exactly.
+  const computed = primaryCents + nickCents + referralSumCents;
+  if (computed !== totalCents) {
+    primaryCents += totalCents - computed;
+  }
+
+  const teamReferrals: TeamReferralPayout[] = recipients.map((r, i) => ({
+    agentName: resolveReferralRecipientName(r.recipientKey, r.recipientOther),
+    pct: r.pct,
+    amount: referralCents[i] / 100,
+  }));
+
+  return {
+    ...b,
+    agentAmount: primaryCents / 100,
+    nickAmount: nickCents / 100,
+    mentorName: null,
+    mentorAmount: 0,
+    samAmount: 0,
+    taylorAmount: 0,
+    larsAmount: 0,
+    referralType: "team",
+    referralPct: recipients.reduce((sum, r) => sum + r.pct, 0),
+    referralPayeeName: null,
+    referralPayeeAmount: 0,
+    teamReferralAgentName: null,
+    teamReferralAmount: 0,
+    teamReferrals,
+  };
+}
+
+function applySingleTeamReferral(
+  b: SideBreakdown,
+  pct: number,
+  name: string
+): SideBreakdown {
+  const totalCents = Math.round(b.totalCommission * 100);
+  const nickCents = NICK_TC_FEE * 100;
+  const otherCents = Math.round(totalCents * pct / 100);
+  const nickHalf = nickCents / 2;
+  const otherNet = otherCents - nickHalf;
+  const primaryNet = totalCents - otherCents - nickHalf;
+  return {
+    ...b,
+    agentAmount: primaryNet / 100,
+    nickAmount: nickCents / 100,
+    mentorName: null,
+    mentorAmount: 0,
+    samAmount: 0,
+    taylorAmount: 0,
+    larsAmount: 0,
+    referralType: "team",
+    referralPct: pct,
+    referralPayeeName: null,
+    referralPayeeAmount: 0,
+    teamReferralAgentName: name,
+    teamReferralAmount: otherNet / 100,
+    teamReferrals: undefined,
+  };
+}
+
 /**
  * Apply an optional referral scenario on top of a standard calcSide result.
  * When referral is null/undefined, returns the breakdown unchanged.
@@ -156,26 +269,19 @@ export function applyReferral(
       };
     }
     case "team": {
-      const otherCents = Math.round(totalCents * pct / 100);
-      const nickHalf = nickCents / 2;
-      const otherNet = otherCents - nickHalf;
-      const primaryNet = totalCents - otherCents - nickHalf;
-      return {
-        ...b,
-        agentAmount: primaryNet / 100,
-        nickAmount: nickCents / 100,
-        mentorName: null,
-        mentorAmount: 0,
-        samAmount: 0,
-        taylorAmount: 0,
-        larsAmount: 0,
-        referralType: "team",
-        referralPct: pct,
-        referralPayeeName: null,
-        referralPayeeAmount: 0,
-        teamReferralAgentName: name,
-        teamReferralAmount: otherNet / 100,
-      };
+      const recipients = teamRecipientsFromConfig(referral);
+      if (recipients.length >= 2) {
+        return applyMultiTeamReferral(b, recipients);
+      }
+      if (recipients.length === 1) {
+        const r = recipients[0];
+        return applySingleTeamReferral(
+          b,
+          r.pct,
+          resolveReferralRecipientName(r.recipientKey, r.recipientOther)
+        );
+      }
+      return applySingleTeamReferral(b, pct, name);
     }
     case "showing": {
       const showCents = Math.round(totalCents * pct / 100);
@@ -330,7 +436,16 @@ function splitNumerators(tier: string): [number, number] {
 }
 
 export function verifyTotal(b: SideBreakdown): boolean {
-  const sum = b.agentAmount + b.nickAmount + b.mentorAmount + b.samAmount + b.taylorAmount + b.larsAmount;
+  const teamReferralTotal =
+    b.teamReferrals?.reduce((sum, r) => sum + r.amount, 0) ?? b.teamReferralAmount ?? 0;
+  const sum =
+    b.agentAmount +
+    b.nickAmount +
+    b.mentorAmount +
+    b.samAmount +
+    b.taylorAmount +
+    b.larsAmount +
+    teamReferralTotal;
   return Math.abs(sum - b.totalCommission) < 0.015;
 }
 
@@ -356,6 +471,16 @@ export function buildWorksheetReferralLines(b: SideBreakdown): {
   line2: string;
 } {
   const eachStr = buildReferralEachLine(b);
+
+  if (b.referralType === "team" && b.teamReferrals?.length) {
+    const lines = b.teamReferrals.map(
+      (r) => `$${formatMoney(r.amount)} to ${r.agentName}`
+    );
+    return {
+      line1: lines[0] ?? "",
+      line2: lines.slice(1).join("; "),
+    };
+  }
 
   if (b.referralType === "team" && b.teamReferralAgentName && b.teamReferralAmount != null) {
     return {

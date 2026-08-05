@@ -121,8 +121,14 @@ function firstName(full: string): string {
 }
 
 function nickTeamReferralPayout(side: SideBreakdown): number {
+  if (side.referralType !== "team") return 0;
+  if (side.teamReferrals?.length) {
+    return side.teamReferrals.reduce((sum, r) => {
+      if (findAgentIdByName(r.agentName) !== NICK_AGENT_ID) return sum;
+      return sum + r.amount;
+    }, 0);
+  }
   if (
-    side.referralType !== "team" ||
     !side.teamReferralAgentName ||
     side.teamReferralAmount == null ||
     side.teamReferralAmount <= 0

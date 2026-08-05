@@ -206,7 +206,12 @@ function BreakdownTable({ b, label }: { b: SideBreakdown; label: string }) {
     ...(b.referralType === "outside" && b.referralPayeeName
       ? [[`${b.referralPayeeName} (outside referral — ${b.referralPct}%)`, b.referralPayeeAmount ?? 0] as [string, number]]
       : []),
-    ...(b.referralType === "team" && b.teamReferralAgentName
+    ...(b.referralType === "team" && b.teamReferrals?.length
+      ? b.teamReferrals.map(
+          (r) =>
+            [`${r.agentName} (team referral — ${r.pct}%)`, r.amount] as [string, number]
+        )
+      : b.referralType === "team" && b.teamReferralAgentName
       ? [[`${b.teamReferralAgentName} (team referral — ${b.referralPct}%)`, b.teamReferralAmount ?? 0] as [string, number]]
       : []),
     ...(isShowing && b.mentorName
@@ -273,6 +278,67 @@ const REFERRAL_OPTIONS: { type: ReferralType; label: string }[] = [
   { type: "showing", label: "Showing Referral" },
 ];
 
+type TeamReferralRow = {
+  pct: string;
+  recipientKey: string;
+  recipientOther: string;
+};
+
+function emptyTeamReferralRow(): TeamReferralRow {
+  return { pct: "", recipientKey: "", recipientOther: "" };
+}
+
+function parseTeamReferralRows(rows: TeamReferralRow[]) {
+  return rows
+    .map((row) => {
+      const pct = parseFloat(row.pct);
+      if (!row.recipientKey || isNaN(pct) || pct <= 0) return null;
+      if (row.recipientKey === "other" && !row.recipientOther.trim()) return null;
+      return {
+        recipientKey: row.recipientKey,
+        recipientOther: row.recipientOther.trim() || undefined,
+        pct,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+}
+
+function teamReferralValidationError(
+  rows: TeamReferralRow[],
+  totalCommission: number
+): string | null {
+  const parsed = parseTeamReferralRows(rows);
+  if (parsed.length < 2 || totalCommission <= 0) return null;
+  const totalCents = Math.round(totalCommission * 100);
+  const nickCents = 5000;
+  const referralSum = parsed.reduce(
+    (sum, row) => sum + Math.round(totalCents * row.pct / 100),
+    0
+  );
+  if (totalCents - nickCents - referralSum < 0) {
+    return "Referral percentages are too high — the primary agent's share would be negative after Nick's $50 fee.";
+  }
+  return null;
+}
+
+function referralCommissionTotal(
+  side: Side,
+  salePrice: number,
+  buyerPct: string,
+  sellerPct: string
+): number {
+  const buyerPctNum = parseFloat(buyerPct);
+  const sellerPctNum = parseFloat(sellerPct);
+  let total = 0;
+  if ((side === "buyer" || side === "dual") && !isNaN(buyerPctNum)) {
+    total = Math.max(total, salePrice * buyerPctNum / 100);
+  }
+  if ((side === "seller" || side === "dual") && !isNaN(sellerPctNum)) {
+    total = Math.max(total, salePrice * sellerPctNum / 100);
+  }
+  return total;
+}
+
 function ReferralScenarioSection({
   referralType,
   onReferralTypeChange,
@@ -282,6 +348,8 @@ function ReferralScenarioSection({
   onRecipientKeyChange,
   recipientOther,
   onRecipientOtherChange,
+  teamReferralRows,
+  onTeamReferralRowsChange,
 }: {
   referralType: ReferralType | null;
   onReferralTypeChange: (t: ReferralType | null) => void;
@@ -291,6 +359,8 @@ function ReferralScenarioSection({
   onRecipientKeyChange: (v: string) => void;
   recipientOther: string;
   onRecipientOtherChange: (v: string) => void;
+  teamReferralRows: TeamReferralRow[];
+  onTeamReferralRowsChange: (rows: TeamReferralRow[]) => void;
 }) {
   const dropdownOptions =
     referralType === "outside"
@@ -327,11 +397,13 @@ function ReferralScenarioSection({
                       onReferralPctChange("");
                       onRecipientKeyChange("");
                       onRecipientOtherChange("");
+                      onTeamReferralRowsChange([emptyTeamReferralRow()]);
                     } else {
                       onReferralTypeChange(type);
                       onReferralPctChange("");
                       onRecipientKeyChange("");
                       onRecipientOtherChange("");
+                      onTeamReferralRowsChange([emptyTeamReferralRow()]);
                     }
                   }}
                   className="h-4 w-4 rounded border-line text-brand focus:ring-brand/15"
@@ -339,7 +411,110 @@ function ReferralScenarioSection({
                 <span className="text-sm font-medium text-ink">{label}</span>
               </label>
 
-              {checked && (
+              {checked && type === "team" && (
+                <div className="space-y-3 pl-6">
+                  <p className="text-xs text-ink-mute leading-relaxed">
+                    One recipient uses the standard team-referral split. With two or more,
+                    Nick&apos;s full $50 fee comes off the top and each percentage is taken
+                    from total commission — the primary agent receives the remainder.
+                  </p>
+                  {teamReferralRows.map((row, index) => (
+                    <div
+                      key={`team-ref-${index}`}
+                      className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-4 rounded-xl border border-line/70 bg-surface/80 p-3"
+                    >
+                      <div>
+                        <label className="text-xs font-medium text-ink-mute block mb-1.5">
+                          Percentage
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          value={row.pct}
+                          onChange={(e) => {
+                            const next = [...teamReferralRows];
+                            next[index] = { ...row, pct: e.target.value };
+                            onTeamReferralRowsChange(next);
+                          }}
+                          placeholder="e.g. 25"
+                          className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-ink-mute block mb-1.5">
+                          Recipient
+                        </label>
+                        <select
+                          value={row.recipientKey}
+                          onChange={(e) => {
+                            const next = [...teamReferralRows];
+                            next[index] = {
+                              ...row,
+                              recipientKey: e.target.value,
+                              recipientOther:
+                                e.target.value === "other" ? row.recipientOther : "",
+                            };
+                            onTeamReferralRowsChange(next);
+                          }}
+                          className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+                        >
+                          <option value="">— Select —</option>
+                          {TEAM_REFERRAL_OPTIONS.map((opt) => (
+                            <option key={opt.key} value={opt.key}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        {row.recipientKey === "other" && (
+                          <input
+                            type="text"
+                            value={row.recipientOther}
+                            onChange={(e) => {
+                              const next = [...teamReferralRows];
+                              next[index] = { ...row, recipientOther: e.target.value };
+                              onTeamReferralRowsChange(next);
+                            }}
+                            placeholder="Type agent name"
+                            className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+                          />
+                        )}
+                      </div>
+                      {teamReferralRows.length > 1 ? (
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onTeamReferralRowsChange(
+                                teamReferralRows.filter((_, i) => i !== index)
+                              )
+                            }
+                            className="rounded-xl border border-line px-3 py-2 text-xs font-medium text-ink-soft hover:bg-canvas"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <div />
+                      )}
+                    </div>
+                  ))}
+                  {teamReferralRows.length < 2 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onTeamReferralRowsChange([...teamReferralRows, emptyTeamReferralRow()])
+                      }
+                      className="text-xs font-semibold text-brand hover:text-brand-hover"
+                    >
+                      + Add another referral
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {checked && type !== "team" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-6">
                   <div>
                     <label className="text-xs font-medium text-ink-mute block mb-1.5">Percentage</label>
@@ -415,6 +590,9 @@ export function CommissionCalculator({
   const [referralPct, setReferralPct] = useState<string>("");
   const [referralRecipientKey, setReferralRecipientKey] = useState<string>("");
   const [referralRecipientOther, setReferralRecipientOther] = useState<string>("");
+  const [teamReferralRows, setTeamReferralRows] = useState<TeamReferralRow[]>([
+    emptyTeamReferralRow(),
+  ]);
   const [derekSplitOverride, setDerekSplitOverride] = useState(false);
 
   const [result, setResult] = useState<CommissionResult | null>(null);
@@ -444,9 +622,31 @@ export function CommissionCalculator({
         }
         if (c.referral) {
           setReferralType(c.referral.type);
-          setReferralPct(String(c.referral.pct));
-          setReferralRecipientKey(c.referral.recipientKey);
-          setReferralRecipientOther(c.referral.recipientOther ?? "");
+          if (c.referral.type === "team") {
+            const rows =
+              c.referral.teamRecipients?.length
+                ? c.referral.teamRecipients.map((r) => ({
+                    pct: String(r.pct),
+                    recipientKey: r.recipientKey,
+                    recipientOther: r.recipientOther ?? "",
+                  }))
+                : [
+                    {
+                      pct: String(c.referral.pct),
+                      recipientKey: c.referral.recipientKey,
+                      recipientOther: c.referral.recipientOther ?? "",
+                    },
+                  ];
+            setTeamReferralRows(rows);
+            setReferralPct(String(c.referral.pct));
+            setReferralRecipientKey(c.referral.recipientKey);
+            setReferralRecipientOther(c.referral.recipientOther ?? "");
+          } else {
+            setReferralPct(String(c.referral.pct));
+            setReferralRecipientKey(c.referral.recipientKey);
+            setReferralRecipientOther(c.referral.recipientOther ?? "");
+            setTeamReferralRows([emptyTeamReferralRow()]);
+          }
         }
         setDerekSplitOverride(!!c.derekSplitOverride);
         setResult(c);
@@ -552,7 +752,30 @@ export function CommissionCalculator({
   }, [loading, meta, parties, data, salePrice, transaction.id]);
 
   function buildReferralConfig(): ReferralConfig | null {
-    if (!referralType || !referralRecipientKey) return null;
+    if (!referralType) return null;
+
+    if (referralType === "team") {
+      const parsed = parseTeamReferralRows(teamReferralRows);
+      if (parsed.length === 0) return null;
+      const first = parsed[0];
+      if (parsed.length >= 2) {
+        return {
+          type: "team",
+          pct: first.pct,
+          recipientKey: first.recipientKey,
+          recipientOther: first.recipientOther,
+          teamRecipients: parsed,
+        };
+      }
+      return {
+        type: "team",
+        pct: first.pct,
+        recipientKey: first.recipientKey,
+        recipientOther: first.recipientOther,
+      };
+    }
+
+    if (!referralRecipientKey) return null;
     const pct = parseFloat(referralPct);
     if (isNaN(pct) || pct <= 0) return null;
     if (referralRecipientKey === "other" && !referralRecipientOther.trim()) return null;
@@ -622,6 +845,17 @@ export function CommissionCalculator({
     if (hint) {
       setSaveError(hint);
       return;
+    }
+
+    if (referralType === "team") {
+      const teamErr = teamReferralValidationError(
+        teamReferralRows,
+        referralCommissionTotal(side, salePrice, buyerPct, sellerPct)
+      );
+      if (teamErr) {
+        setSaveError(teamErr);
+        return;
+      }
     }
 
     const referral = buildReferralConfig();
@@ -852,6 +1086,8 @@ export function CommissionCalculator({
           onRecipientKeyChange={setReferralRecipientKey}
           recipientOther={referralRecipientOther}
           onRecipientOtherChange={setReferralRecipientOther}
+          teamReferralRows={teamReferralRows}
+          onTeamReferralRowsChange={setTeamReferralRows}
         />
 
         <button
