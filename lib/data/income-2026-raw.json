@@ -1184,6 +1184,14 @@
     "paid": false
   },
   {
+    "closeDate": "2026-09-11",
+    "address": "2199 Long Lake Road",
+    "amount": 50,
+    "agentLabel": "Jeremy - Listing",
+    "isNickDeal": false,
+    "paid": false
+  },
+  {
     "closeDate": "2026-09-22",
     "address": "1337 Centennial Dr",
     "amount": 50,
