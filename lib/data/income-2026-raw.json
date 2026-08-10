@@ -1024,12 +1024,12 @@
     "paid": true
   },
   {
-    "closeDate": "2026-07-14",
+    "closeDate": "2026-08-06",
     "address": "15822 Fleet Trail",
     "amount": 50,
     "agentLabel": "Lucas - Listing",
     "isNickDeal": false,
-    "paid": false
+    "paid": true
   },
   {
     "closeDate": "2026-07-14",
