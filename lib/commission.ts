@@ -1,4 +1,4 @@
-import { findAgent, getMentor, NICK_TC_FEE, type Agent } from "@/lib/agents";
+import { findAgent, getMentor, NICK_TC_FEE, type Agent, findAgentIdByName } from "@/lib/agents";
 
 export type CommissionSide = "buyer" | "seller";
 
@@ -138,6 +138,19 @@ export function resolveReferralRecipientName(
   return REFERRAL_NAME_LOOKUP[recipientKey] ?? recipientKey;
 }
 
+export function isNickMartinReferralRecipient(
+  recipientKey: string,
+  recipientOther?: string
+): boolean {
+  if (recipientKey === "nick-martin") return true;
+  const name = resolveReferralRecipientName(recipientKey, recipientOther);
+  return findAgentIdByName(name) === "nick-martin";
+}
+
+function isNickMartinReferralName(name: string): boolean {
+  return findAgentIdByName(name) === "nick-martin";
+}
+
 /** Normalize saved referral config to a list of team recipients (0–N). */
 export function teamRecipientsFromConfig(referral: ReferralConfig): TeamReferralRecipient[] {
   if (referral.type !== "team") return [];
@@ -182,13 +195,22 @@ export function applyMultiTeamReferral(
   const teamReferrals: TeamReferralPayout[] = recipients.map((r, i) => ({
     agentName: resolveReferralRecipientName(r.recipientKey, r.recipientOther),
     pct: r.pct,
-    amount: referralCents[i] / 100,
+    amount:
+      (referralCents[i] +
+        (isNickMartinReferralRecipient(r.recipientKey, r.recipientOther)
+          ? nickCents
+          : 0)) /
+      100,
   }));
+
+  const nickGetsFeeViaReferral = recipients.some((r) =>
+    isNickMartinReferralRecipient(r.recipientKey, r.recipientOther)
+  );
 
   return {
     ...b,
     agentAmount: primaryCents / 100,
-    nickAmount: nickCents / 100,
+    nickAmount: nickGetsFeeViaReferral ? 0 : nickCents / 100,
     mentorName: null,
     mentorAmount: 0,
     samAmount: 0,
@@ -207,11 +229,41 @@ export function applyMultiTeamReferral(
 function applySingleTeamReferral(
   b: SideBreakdown,
   pct: number,
-  name: string
+  name: string,
+  recipientKey?: string,
+  recipientOther?: string
 ): SideBreakdown {
   const totalCents = Math.round(b.totalCommission * 100);
   const nickCents = NICK_TC_FEE * 100;
-  const otherCents = Math.round(totalCents * pct / 100);
+  const referralCents = Math.round(totalCents * pct / 100);
+
+  if (
+    isNickMartinReferralName(name) ||
+    (recipientKey != null &&
+      isNickMartinReferralRecipient(recipientKey, recipientOther))
+  ) {
+    const nickCombinedCents = referralCents + nickCents;
+    const primaryCents = totalCents - nickCombinedCents;
+    return {
+      ...b,
+      agentAmount: primaryCents / 100,
+      nickAmount: 0,
+      mentorName: null,
+      mentorAmount: 0,
+      samAmount: 0,
+      taylorAmount: 0,
+      larsAmount: 0,
+      referralType: "team",
+      referralPct: pct,
+      referralPayeeName: null,
+      referralPayeeAmount: 0,
+      teamReferralAgentName: name,
+      teamReferralAmount: nickCombinedCents / 100,
+      teamReferrals: undefined,
+    };
+  }
+
+  const otherCents = referralCents;
   const nickHalf = nickCents / 2;
   const otherNet = otherCents - nickHalf;
   const primaryNet = totalCents - otherCents - nickHalf;
@@ -278,10 +330,12 @@ export function applyReferral(
         return applySingleTeamReferral(
           b,
           r.pct,
-          resolveReferralRecipientName(r.recipientKey, r.recipientOther)
+          resolveReferralRecipientName(r.recipientKey, r.recipientOther),
+          r.recipientKey,
+          r.recipientOther
         );
       }
-      return applySingleTeamReferral(b, pct, name);
+      return applySingleTeamReferral(b, pct, name, referral.recipientKey, referral.recipientOther);
     }
     case "showing": {
       const showCents = Math.round(totalCents * pct / 100);

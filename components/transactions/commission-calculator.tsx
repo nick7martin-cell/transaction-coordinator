@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Calculator, Loader2 } from "lucide-react";
-import { AGENTS, teamSteadyEmailFor } from "@/lib/agents";
+import { AGENTS, findAgentIdByName, NICK_TC_FEE, teamSteadyEmailFor } from "@/lib/agents";
 import {
   applyReferral,
   buildAgentNotes,
@@ -192,6 +192,13 @@ const SIDE_OPTIONS: { value: Side; label: string }[] = [
   { value: "dual",   label: "Both sides (dual agency)" },
 ];
 
+function teamReferralLineLabel(agentName: string, pct: number, amount: number): string {
+  const isNick = findAgentIdByName(agentName) === "nick-martin";
+  const inclTc =
+    isNick && amount > 0 && amount >= NICK_TC_FEE ? " incl. $50 TC fee" : "";
+  return `${agentName} (team referral — ${pct}%${inclTc})`;
+}
+
 function BreakdownTable({ b, label }: { b: SideBreakdown; label: string }) {
   const isNickAgent = b.agentId === "nick-martin";
   const agentLabel = isNickAgent
@@ -209,16 +216,16 @@ function BreakdownTable({ b, label }: { b: SideBreakdown; label: string }) {
     ...(b.referralType === "team" && b.teamReferrals?.length
       ? b.teamReferrals.map(
           (r) =>
-            [`${r.agentName} (team referral — ${r.pct}%)`, r.amount] as [string, number]
+            [teamReferralLineLabel(r.agentName, r.pct, r.amount), r.amount] as [string, number]
         )
       : b.referralType === "team" && b.teamReferralAgentName
-      ? [[`${b.teamReferralAgentName} (team referral — ${b.referralPct}%)`, b.teamReferralAmount ?? 0] as [string, number]]
+      ? [[teamReferralLineLabel(b.teamReferralAgentName, b.referralPct ?? 0, b.teamReferralAmount ?? 0), b.teamReferralAmount ?? 0] as [string, number]]
       : []),
     ...(isShowing && b.mentorName
       ? [[`${b.mentorName} (showing referral — ${b.referralPct}%)`, b.mentorAmount] as [string, number]]
       : []),
     ...(!isShowing && b.mentorName ? [[`${b.mentorName} (mentor — 40% of team)`, b.mentorAmount] as [string, number]] : []),
-    ...(!isNickAgent ? [["Nick — TC fee", b.nickAmount] as [string, number]] : []),
+    ...(b.nickAmount > 0 ? [["Nick — TC fee", b.nickAmount] as [string, number]] : []),
     ...(skipTeamSplit ? [] : [
       ["Sam Steadman", b.samAmount],
       ["Taylor", b.taylorAmount],
