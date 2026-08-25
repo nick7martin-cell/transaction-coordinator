@@ -3,6 +3,7 @@ import { normalizeIncomeAddress } from "@/lib/income-import";
 /** Final income-tracker payout overrides keyed by normalized address. */
 const OVERRIDES: Record<string, number> = {
   [normalizeIncomeAddress("9743 Almond Ave N")]: 11930,
+  [normalizeIncomeAddress("2586 Ann Drive")]: 5104.4,
 };
 
 export function incomeAmountOverride(address: string): number | undefined {
