@@ -2,6 +2,16 @@ import type { CommissionResult } from "@/lib/commission";
 import { formatMoney } from "@/lib/commission";
 import type { ExtractedData, FinancingType } from "@/lib/types";
 
+function hasConcessionsPct(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): boolean {
+  for (const source of sources) {
+    const pct = source?.concessionsPct;
+    if (pct != null && pct !== "" && pct !== "0") return true;
+  }
+  return false;
+}
+
 /** Default values seeded into worksheet JSONB when a transaction is first saved. */
 export const WORKSHEET_FIELD_DEFAULTS: Record<string, string> = {
   propertyType: "Single Family",
@@ -71,6 +81,12 @@ export function applyWorksheetDefaults(
 ): Record<string, unknown> {
   const result = { ...merged };
   for (const [k, v] of Object.entries(WORKSHEET_FIELD_DEFAULTS)) {
+    if (
+      k === "concessionsDollars" &&
+      hasConcessionsPct(merged, existing)
+    ) {
+      continue;
+    }
     if (!(k in (existing ?? {})) && !(k in merged)) {
       result[k] = v;
     }
@@ -123,6 +139,16 @@ export function mergeConcessionsIntoWorksheet(
     ) {
       ws[key] = value;
     }
+  }
+
+  if (
+    fromExtraction.concessionsPct &&
+    !fromExtraction.concessionsDollars &&
+    (ws.concessionsDollars === "0.00" ||
+      ws.concessionsDollars === "0" ||
+      ws.concessionsDollars === "")
+  ) {
+    delete ws.concessionsDollars;
   }
 
   return ws;

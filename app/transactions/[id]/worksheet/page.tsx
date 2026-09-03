@@ -264,9 +264,14 @@ export default function WorksheetPage() {
   const salePriceStr = data.purchasePrice ? `$${formatMoney(data.purchasePrice)}` : "";
   const earnestStr   = data.earnestMoney  ? `$${formatMoney(data.earnestMoney)}`  : "";
   const concessionsFromExtraction = concessionsWorksheetFields(data);
-  const concessionsDollarsAuto =
-    concessionsFromExtraction.concessionsDollars ??
-    WORKSHEET_FIELD_DEFAULTS.concessionsDollars;
+  const hasPctConcession = Boolean(
+    (ws.concessionsPct && ws.concessionsPct !== "0") ||
+      concessionsFromExtraction.concessionsPct
+  );
+  const concessionsDollarsAuto = hasPctConcession
+    ? concessionsFromExtraction.concessionsDollars
+    : (concessionsFromExtraction.concessionsDollars ??
+      WORKSHEET_FIELD_DEFAULTS.concessionsDollars);
   const concessionsDollarsSaved =
     ws.concessionsDollars &&
     ws.concessionsDollars !== "0.00" &&
