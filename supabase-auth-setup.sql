@@ -1,0 +1,16 @@
+-- Handled login (Supabase Auth)
+--
+-- 1. Supabase Dashboard → Authentication → Providers → Email
+--    • Keep "Email" enabled
+--    • DISABLE "Confirm email" if you want instant login after creating your user
+--    • DISABLE sign-ups (Dashboard → Authentication → Settings →
+--      "Allow new users to sign up" OFF) — no public registration
+--
+-- 2. Authentication → Users → Add user → create YOUR email + password only
+--
+-- 3. Vercel env vars (Production):
+--    NEXT_PUBLIC_SUPABASE_ANON_KEY  (Settings → API → anon public key)
+--    HANDLED_ALLOWED_EMAIL          (your email, lowercase)
+--
+-- Middleware blocks every page and API route until a valid session exists.
+-- Only HANDLED_ALLOWED_EMAIL can stay signed in even if another user existed.

@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   CircleDollarSign,
   FileStack,
   LayoutDashboard,
+  LogOut,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -19,6 +21,18 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function signOut() {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+    } catch {
+      await fetch("/api/auth/logout", { method: "POST" });
+    }
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <aside
@@ -73,22 +87,23 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Profile anchored at bottom */}
+      {/* Sign out */}
       <div className="mt-auto border-t border-line p-2 xl:p-3">
         <button
           type="button"
-          title="Coordinator profile"
+          title="Sign out"
+          onClick={() => void signOut()}
           className={cn(
             "flex w-full items-center rounded-xl py-2 text-left transition-colors hover:bg-line/60",
-            "justify-center px-0 xl:justify-start xl:gap-3 xl:px-2"
+            "justify-center px-0 xl:justify-start xl:gap-3 xl:px-2 text-ink-soft hover:text-ink"
           )}
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
-            TC
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-line/80">
+            <LogOut className="h-4 w-4 text-ink-mute" aria-hidden />
           </div>
           <div className="hidden min-w-0 leading-tight xl:block">
-            <p className="truncate text-[13px] font-semibold text-ink">Coordinator</p>
-            <p className="truncate text-[11px] text-ink-mute">View profile</p>
+            <p className="truncate text-[13px] font-semibold text-ink">Sign out</p>
+            <p className="truncate text-[11px] text-ink-mute">End session</p>
           </div>
         </button>
       </div>
