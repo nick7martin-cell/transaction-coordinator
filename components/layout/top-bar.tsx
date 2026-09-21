@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Bell, Search } from "lucide-react";
 
 type TopBarProps = {
@@ -15,6 +16,10 @@ export function TopBar({
   searchValue = "",
   showSearch = true,
 }: TopBarProps) {
+  const [internalQuery, setInternalQuery] = useState("");
+  const controlled = onSearch != null;
+  const query = controlled ? searchValue : internalQuery;
+
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 px-4 md:gap-4 md:px-6 xl:px-8 min-w-0">
       {showSearch ? (
@@ -23,8 +28,12 @@ export function TopBar({
           <input
             type="search"
             placeholder={searchPlaceholder}
-            value={searchValue}
-            onChange={(e) => onSearch?.(e.target.value)}
+            value={query}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (controlled) onSearch(next);
+              else setInternalQuery(next);
+            }}
             className="w-full h-10 rounded-xl border border-line bg-surface pl-10 pr-4 text-sm text-ink placeholder:text-ink-mute shadow-card focus:outline-none focus:ring-2 focus:ring-brand/15 focus:border-line"
           />
         </div>

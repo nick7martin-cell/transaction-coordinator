@@ -1,12 +1,5 @@
-import { AppShell } from "@/components/layout/app-shell";
-import { IncomeTrackerView } from "@/components/income/income-tracker";
+import { IncomePageShell } from "@/components/income/income-page-shell";
 
 export default function IncomePage() {
-  return (
-    <AppShell>
-      <main className="p-4 sm:p-6 md:p-8 min-w-0">
-        <IncomeTrackerView />
-      </main>
-    </AppShell>
-  );
+  return <IncomePageShell />;
 }

@@ -25,6 +25,8 @@ import {
   type TransactionParty,
 } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 async function loadTransactionInputs(): Promise<TransactionIncomeInput[]> {
   const [{ data: extractions, error: extError }, { data: metaRows, error: metaError }] =
     await Promise.all([
@@ -89,17 +91,24 @@ export async function GET(req: Request) {
       if (close) availableYears.add(parseInt(close.slice(0, 4), 10));
     }
 
-    return Response.json({
-      year,
-      rows,
-      summary,
-      availableYears: [...availableYears].sort((a, b) => b - a),
-      manualEntryCount: manualEntries.length,
-      paidKeysWritable: trackerState.writable,
-      warning: trackerState.writable
-        ? undefined
-        : "Paid toggles won't save until you run supabase-income-tracker-fix.sql in Supabase.",
-    });
+    return Response.json(
+      {
+        year,
+        rows,
+        summary,
+        availableYears: [...availableYears].sort((a, b) => b - a),
+        manualEntryCount: manualEntries.length,
+        paidKeysWritable: trackerState.writable,
+        warning: trackerState.writable
+          ? undefined
+          : "Paid toggles won't save until you run supabase-income-tracker-fix.sql in Supabase.",
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
   } catch (err) {
     return Response.json(
       { error: err instanceof Error ? err.message : "Failed to load income data" },

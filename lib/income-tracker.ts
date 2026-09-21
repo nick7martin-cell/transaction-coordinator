@@ -6,9 +6,13 @@ import {
   incomeIdentityKey,
   type ManualIncomeEntry,
 } from "@/lib/income-import";
-import { EXCLUDED_INCOME_TRANSACTION_IDS } from "@/lib/data/income-exclusions";
+import {
+  EXCLUDED_INCOME_TRANSACTION_IDS,
+  EXCLUDED_MANUAL_INCOME_IDENTITIES,
+} from "@/lib/data/income-exclusions";
 import { incomeAmountOverride } from "@/lib/data/income-amount-overrides";
 import { incomeRowWithCloseDate } from "@/lib/income-close-date";
+import { matchesPropertyAddressSearch } from "@/lib/format";
 import type { CommissionResult, SideBreakdown } from "@/lib/commission";
 import { hasSavedCommission, resolveCommissionAutofill } from "@/lib/commission-autofill";
 import { resolveStatus } from "@/lib/transaction-lifecycle";
@@ -401,7 +405,14 @@ export function buildIncomeRows(
   const { handledIdentities, cancelledIdentities } =
     classifyTransactionsForManualFilter(inputs);
   const { kept: manualForYear } = filterManualEntries(
-    manualEntries.filter((e) => e.year === year),
+    manualEntries
+      .filter((e) => e.year === year)
+      .filter(
+        (e) =>
+          !EXCLUDED_MANUAL_INCOME_IDENTITIES.has(
+            incomeIdentityKey(e.address, e.agentLabel)
+          )
+      ),
     handledIdentities,
     cancelledIdentities
   );
@@ -818,6 +829,12 @@ export function filterRowsByAgent(rows: IncomeRow[], agentName: string): IncomeR
   return rows.filter(
     (r) => !r.isBasePay && agentNameFromLabel(r.agentLabel).toLowerCase() === target
   );
+}
+
+export function filterRowsByAddressSearch(rows: IncomeRow[], query: string): IncomeRow[] {
+  const q = query.trim();
+  if (!q) return rows;
+  return rows.filter((r) => matchesPropertyAddressSearch(r.address, q));
 }
 
 export function sortRowsByCloseDate(rows: IncomeRow[]): IncomeRow[] {

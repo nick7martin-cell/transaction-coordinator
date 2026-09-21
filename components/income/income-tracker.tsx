@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AppShell } from "@/components/layout/app-shell";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   computeIncomeSummary,
@@ -14,6 +13,7 @@ import {
   monthPaidTotal,
   monthTotal,
   filterRowsByAgent,
+  filterRowsByAddressSearch,
   sortRowsByCloseDate,
   type IncomeRow,
   type IncomeSummary,
@@ -770,7 +770,12 @@ function AgentDealsSection({
   );
 }
 
-export function IncomeTrackerView() {
+type IncomeTrackerViewProps = {
+  /** From the app shell top bar — filters deals by street/city. */
+  addressSearch?: string;
+};
+
+export function IncomeTrackerView({ addressSearch = "" }: IncomeTrackerViewProps) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [data, setData] = useState<IncomeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -784,7 +789,7 @@ export function IncomeTrackerView() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/income?year=${year}`);
+      const res = await fetch(`/api/income?year=${year}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load income data");
       setData(json as IncomeResponse);
@@ -803,15 +808,22 @@ export function IncomeTrackerView() {
     setSelectedAgent(null);
   }, [year]);
 
+  const filteredRows = useMemo(
+    () => (data ? filterRowsByAddressSearch(data.rows, addressSearch) : []),
+    [data, addressSearch]
+  );
+
   const monthKeys = useMemo(
-    () => (data ? [...groupRowsByMonth(data.rows).keys()].sort() : []),
-    [data]
+    () => [...groupRowsByMonth(filteredRows).keys()].sort(),
+    [filteredRows]
   );
 
   const byMonth = useMemo(
-    () => (data ? groupRowsByMonth(data.rows) : new Map<string, IncomeRow[]>()),
-    [data]
+    () => groupRowsByMonth(filteredRows),
+    [filteredRows]
   );
+
+  const searchActive = addressSearch.trim().length > 0;
 
 
   useEffect(() => {
@@ -820,10 +832,14 @@ export function IncomeTrackerView() {
 
   useEffect(() => {
     if (monthKeys.length === 0) return;
+    if (searchActive) {
+      setExpandedMonths(new Set(monthKeys));
+      return;
+    }
     setExpandedMonths((prev) =>
       prev.size === 0 ? defaultExpandedMonthKeys(monthKeys) : prev
     );
-  }, [monthKeys]);
+  }, [monthKeys, searchActive]);
 
   async function saveCloseDate(id: string, closeDate: string) {
     setSavingCloseDateId(id);
@@ -893,8 +909,13 @@ export function IncomeTrackerView() {
 
   const agentDeals = useMemo(() => {
     if (!data || !selectedAgent) return [];
-    return sortRowsByCloseDate(filterRowsByAgent(data.rows, selectedAgent));
-  }, [data, selectedAgent]);
+    return sortRowsByCloseDate(
+      filterRowsByAddressSearch(
+        filterRowsByAgent(data.rows, selectedAgent),
+        addressSearch
+      )
+    );
+  }, [data, selectedAgent, addressSearch]);
 
   const summary = data?.summary;
 
@@ -999,8 +1020,16 @@ export function IncomeTrackerView() {
                 <div className="rounded-[20px] border border-line bg-surface p-10 text-center shadow-card">
                   <CircleDollarSign className="mx-auto h-10 w-10 text-ink-mute mb-3" />
                   <p className="text-sm text-ink-soft">
-                    No income rows for {year} yet. Transactions need a closing date and a Team
-                    Steady agent to appear here.
+                    {searchActive ? (
+                      <>
+                        No deals match &ldquo;{addressSearch.trim()}&rdquo; in {year}.
+                      </>
+                    ) : (
+                      <>
+                        No income rows for {year} yet. Transactions need a closing date and a Team
+                        Steady agent to appear here.
+                      </>
+                    )}
                   </p>
                 </div>
               ) : (

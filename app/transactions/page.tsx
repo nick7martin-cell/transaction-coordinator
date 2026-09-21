@@ -6,7 +6,6 @@ import { AppShell } from "@/components/layout/app-shell";
 import { TopBar } from "@/components/layout/top-bar";
 import { TransactionCard } from "@/components/transactions/transaction-card";
 import { PropertyAddressLabel } from "@/components/transactions/property-address-label";
-import { TransactionSearch } from "@/components/transactions/transaction-search";
 import { UploadZone } from "@/components/upload/upload-zone";
 import { PropertyImage } from "@/components/ui/property-image";
 import {
@@ -129,7 +128,15 @@ export default function TransactionsPage() {
   }, [transactions, activeFilter, search, agentFilter]);
 
   return (
-    <AppShell topBar={<TopBar showSearch={false} />}>
+    <AppShell
+      topBar={
+        <TopBar
+          searchValue={search}
+          onSearch={setSearch}
+          searchPlaceholder="Search by address..."
+        />
+      }
+    >
       <main className="p-6 md:p-8">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-7">
           <div>
@@ -192,12 +199,6 @@ export default function TransactionsPage() {
         )}
 
         <div className="mb-7 space-y-4">
-          <TransactionSearch
-            value={search}
-            onChange={setSearch}
-            className="w-full max-w-md"
-          />
-
           <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
             {filters.map((f) => (
