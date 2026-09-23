@@ -105,6 +105,8 @@ export const TEAM_REFERRAL_OPTIONS = [
   { key: "jadde-rowe", label: "Jadde Rowe" },
   { key: "landon-mathis", label: "Landon Mathis" },
   { key: "jeremy-schulenburg", label: "Jeremy Schulenburg" },
+  { key: "hubert-ngabirano", label: "Hubert Ngabirano" },
+  { key: "lars-anderson", label: "Lars Anderson" },
   { key: "nick-martin", label: "Nick Martin" },
   { key: "other", label: "Other (type name)" },
 ] as const;
@@ -125,8 +127,9 @@ const REFERRAL_NAME_LOOKUP: Record<string, string> = {
   "jadde-rowe": "Jadde Rowe",
   "landon-mathis": "Landon Mathis",
   "jeremy-schulenburg": "Jeremy Schulenburg",
-  "nick-martin": "Nick Martin",
   "hubert-ngabirano": "Hubert Ngabirano",
+  "lars-anderson": "Lars Anderson",
+  "nick-martin": "Nick Martin",
   "asa-tessness": "Asa Tessness",
 };
 
