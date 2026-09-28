@@ -1,4 +1,4 @@
-import { canonicalContactEmail } from "@/lib/canonical-contacts";
+import { canonicalContactEmail, normalizePartyContact } from "@/lib/canonical-contacts";
 import { findAgentIdByName } from "@/lib/agents";
 import type { Contact, ExtractedData, TransactionParty } from "@/lib/types";
 import { makeParty, seedPartiesFromExtraction } from "@/lib/types";
@@ -139,17 +139,19 @@ export function contactToParty(
   contact: Contact,
   role: TransactionParty["role"]
 ): TransactionParty {
-  return makeParty({
-    name: contact.contact_name,
-    role,
-    company: contact.company_name,
-    email: canonicalContactEmail(
-      contact.contact_name,
-      contact.email,
-      contact.company_name
-    ),
-    phone: contact.phone ?? "",
-  });
+  return normalizePartyContact(
+    makeParty({
+      name: contact.contact_name,
+      role,
+      company: contact.company_name,
+      email: canonicalContactEmail(
+        contact.contact_name,
+        contact.email,
+        contact.company_name
+      ),
+      phone: contact.phone ?? "",
+    })
+  );
 }
 
 export function matchPreferredLender(

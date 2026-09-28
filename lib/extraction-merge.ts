@@ -1,3 +1,4 @@
+import { isIngridWatermarkContact } from "@/lib/canonical-contacts";
 import type { ExtractedData } from "@/lib/types";
 import { sanitizeContactField } from "@/lib/format";
 import {
@@ -219,13 +220,11 @@ function titleSideDiffers(
 }
 
 function isKnownOurSideDefaultTitle(info: TitleContactInfo): boolean {
+  if (isIngridWatermarkContact(info.name, info.email, info.company)) return true;
   const name = normTitleText(info.name);
   const company = normTitleText(info.company);
   const email = normTitleText(info.email);
   return (
-    (name.includes("ingrid") && name.includes("bredeson")) ||
-    company.includes("watermark") ||
-    email.includes("wmtitle.com") ||
     (name.includes("lacey") && name.includes("rentz")) ||
     company.includes("all american title") ||
     email.includes("allamericantitleco.com")

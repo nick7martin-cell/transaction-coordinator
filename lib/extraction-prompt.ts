@@ -126,6 +126,7 @@ RULES:
 - Leave contract fields (purchasePrice, closingDate, earnestMoney, etc.) as null unless explicitly stated in the supplemental material
 - Extract all party contact info you can identify: buyers, sellers, buyer agent, listing agent, lender/loan officer, buyer-side title, seller-side title
 - Parse email headers (From/To/Cc), signature blocks, and pasted contact lists carefully
+- Watermark Title buyer-side closer is always Ingrid Bredeson (teamingrid@wmtitle.com) — use that full name and email; do not add duplicate "Ingrid" rows from To/Cc lines
 - buyerEmails/buyerPhones and sellerEmails/sellerPhones arrays must align by index with buyerNames/sellerNames when possible
 - Set confidence based on how clearly the supplemental material identifies each contact
 - If confidence < 0.85, set flaggedForReview to true
@@ -159,9 +160,10 @@ export function partiesForSupplementalPrompt(
     const company = (p.company ?? "").trim().toLowerCase();
     const email = (p.email ?? "").trim().toLowerCase();
     const isDefault =
-      (name.includes("ingrid") && name.includes("bredeson")) ||
+      (name.includes("ingrid") && (name.includes("bredeson") || company.includes("watermark"))) ||
       company.includes("watermark") ||
       email.includes("wmtitle.com") ||
+      email.includes("teamingrid") ||
       (name.includes("lacey") && name.includes("rentz")) ||
       company.includes("all american title") ||
       email.includes("allamericantitleco.com") ||
