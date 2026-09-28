@@ -21,6 +21,7 @@ import {
 } from "@/lib/types";
 import {
   defaultCommissionCheckboxValues,
+  hasPaLine406BuyerBrokerPct,
   concessionsWorksheetFields,
   WORKSHEET_FIELD_DEFAULTS,
   type CommissionCheckboxKey,
@@ -194,6 +195,10 @@ export default function WorksheetPage() {
   );
 
   function worksheetCheckboxValue(k: CommissionCheckboxKey): string {
+    if (hasPaLine406BuyerBrokerPct(data.buyerBrokerCommissionPct)) {
+      if (k === "buyerPayingCheck") return "false";
+      if (k === "buyerBrokerCheck") return "true";
+    }
     const saved = ws[k];
     if (saved === "true" || saved === "false") return saved;
     return commissionCheckboxDefaults[k];

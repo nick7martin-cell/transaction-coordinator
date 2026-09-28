@@ -38,6 +38,13 @@ const ALL_COMMISSION_CHECKS_FALSE = Object.fromEntries(
  *   line 406 of the PA. Only relevant when side === "seller": if present and
  *   non-zero, the "Seller Paying BUYER Broker Compensation" line is checked.
  */
+/** MN PA line 406 — seller pays buyer broker compensation (not buyer-paying row). */
+export function hasPaLine406BuyerBrokerPct(
+  extractedBuyerBrokerPct?: number | null
+): boolean {
+  return extractedBuyerBrokerPct != null && extractedBuyerBrokerPct > 0;
+}
+
 export function defaultCommissionCheckboxValues(
   commission: CommissionResult | null | undefined,
   financingType: FinancingType | null | undefined,
@@ -46,32 +53,36 @@ export function defaultCommissionCheckboxValues(
   const side = commission?.side;
   if (!side) return { ...ALL_COMMISSION_CHECKS_FALSE };
 
+  const out = { ...ALL_COMMISSION_CHECKS_FALSE };
+  const hasLine406 = hasPaLine406BuyerBrokerPct(extractedBuyerBrokerPct);
   const isCash = financingType === "cash";
 
+  if (side === "seller" || side === "dual") {
+    out.listingBrokerCheck = "true";
+  }
+
+  // Line 406 always → "Seller Paying BUYER Broker Compensation" (never buyer-paying).
+  if (hasLine406) {
+    out.buyerBrokerCheck = "true";
+    return out;
+  }
+
   if (isCash && (side === "buyer" || side === "dual")) {
-    return { ...ALL_COMMISSION_CHECKS_FALSE, buyerPayingCheck: "true" };
+    out.buyerPayingCheck = "true";
+    return out;
   }
 
   if (side === "buyer") {
-    return { ...ALL_COMMISSION_CHECKS_FALSE, buyerBrokerCheck: "true" };
+    out.buyerBrokerCheck = "true";
+    return out;
   }
 
-  if (side === "seller") {
-    // Only check the buyer broker line when line 406 of the PA was actually
-    // extracted with a non-zero value. Otherwise leave all buyer lines blank.
-    const hasBuyerBrokerPct = extractedBuyerBrokerPct != null && extractedBuyerBrokerPct > 0;
-    return {
-      ...ALL_COMMISSION_CHECKS_FALSE,
-      listingBrokerCheck: "true",
-      ...(hasBuyerBrokerPct && { buyerBrokerCheck: "true" }),
-    };
+  if (side === "dual") {
+    out.buyerBrokerCheck = "true";
+    return out;
   }
 
-  return {
-    ...ALL_COMMISSION_CHECKS_FALSE,
-    listingBrokerCheck: "true",
-    buyerBrokerCheck: "true",
-  };
+  return out;
 }
 
 /** Fill default worksheet fields only when the key was never persisted before. */

@@ -20,12 +20,13 @@ import {
   type ReferralType,
   type SideBreakdown,
 } from "@/lib/commission";
-import type { Transaction, TransactionMeta, TransactionParty } from "@/lib/types";
+import type { ExtractedData, Transaction, TransactionMeta, TransactionParty } from "@/lib/types";
 import { coerceExtractedData } from "@/lib/types";
 import {
   hasSavedCommission,
   resolveCommissionAutofill,
 } from "@/lib/commission-autofill";
+import { defaultCommissionCheckboxValues } from "@/lib/worksheet-defaults";
 import { cn } from "@/lib/utils";
 
 type Side = "buyer" | "seller" | "dual";
@@ -104,8 +105,17 @@ function applyReferralFields(
  * "Selling side" = the buyer's broker (Team Steady / RE/MAX Results); the
  * SELLING COMPANY Associate is therefore the Team Steady agent (#4), never the TC.
  */
-function worksheetFromCommission(c: CommissionResult): Record<string, string> {
-  const ws: Record<string, string> = {};
+function worksheetFromCommission(
+  c: CommissionResult,
+  extracted: Pick<ExtractedData, "financingType" | "buyerBrokerCommissionPct">
+): Record<string, string> {
+  const ws: Record<string, string> = {
+    ...defaultCommissionCheckboxValues(
+      c,
+      extracted.financingType,
+      extracted.buyerBrokerCommissionPct
+    ),
+  };
 
   if (c.buyer) {
     ws.buyerBrokerPct = String(c.buyer.commissionPct);
@@ -743,7 +753,7 @@ export function CommissionCalculator({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         commission,
-        worksheet: worksheetFromCommission(commission),
+        worksheet: worksheetFromCommission(commission, data),
       }),
     })
       .then(async (res) => {
@@ -824,7 +834,7 @@ export function CommissionCalculator({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           commission,
-          worksheet: worksheetFromCommission(commission),
+          worksheet: worksheetFromCommission(commission, data),
         }),
       });
       if (!res.ok) {

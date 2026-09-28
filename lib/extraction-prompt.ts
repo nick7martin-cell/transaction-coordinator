@@ -79,7 +79,7 @@ RULES:
 - If a field is missing or unclear, use null (use empty arrays for array fields when none found)
 - financingType must be one of: conventional, FHA, VA, cash — or null if not specified
 - Dates must be YYYY-MM-DD when possible; infer from contract language if only relative dates are given
-- buyerBrokerCommissionPct: look for buyer broker compensation percentage (on MN purchase agreements this is line 406); return as a decimal number like 2.7, not 0.027
+- buyerBrokerCommissionPct: look for buyer broker compensation percentage (on MN purchase agreements this is line 406); return as a decimal number like 2.7, not 0.027. When line 406 has a value, the seller pays that buyer broker compensation on the closing worksheet — not the buyer.
 - sellerPaidBuyerConcessions / sellerPaidBuyerConcessionsPct: on Minnesota purchase agreements, line 159 covers seller-paid buyer closing costs (buyer concessions). Extract the dollar amount into sellerPaidBuyerConcessions when a $ amount is filled in; extract the percentage into sellerPaidBuyerConcessionsPct when stated as % of purchase price. Use null for whichever form is not used. If line 159 is blank or N/A, both are null.
 - mlsNumber: look for MLS# or listing number anywhere in the document
 - pidNumber: look for Property ID, PID, Parcel ID, or Tax ID number
