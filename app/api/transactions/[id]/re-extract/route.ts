@@ -142,7 +142,7 @@ export async function POST(
       .order("type")
       .order("company_name");
 
-    let nextParties = ensureDefaultTitleParties(mergedParties);
+    let nextParties = ensureDefaultTitleParties(mergedParties, merged);
     const lenderMerge = mergeLenderFromExtraction(
       nextParties,
       merged,

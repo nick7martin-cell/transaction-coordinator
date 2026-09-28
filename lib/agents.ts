@@ -105,6 +105,7 @@ export const MENTOR_MAP: Record<string, string[]> = {
 export const AGENT_ADMIN_CC: Partial<Record<string, string[]>> = {
   "collin-anderson": ["savannah@teamsteadyrealestate.com"],
   "lucas-hansen": ["savannah@teamsteadyrealestate.com"],
+  "luke-chase": ["sarah@teamsteadyrealestate.com"],
 };
 
 export function adminCcForAgent(agentId: string | null | undefined): string[] {

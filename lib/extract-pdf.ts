@@ -5,6 +5,7 @@ import {
   partiesForSupplementalPrompt,
   summarizePartiesForPrompt,
 } from "@/lib/extraction-prompt";
+import { applyExtractionPostProcess } from "@/lib/extraction-postprocess";
 import type { ExtractedData, TransactionParty } from "@/lib/types";
 import { sanitizeNullableField, sanitizeStringArray } from "@/lib/format";
 
@@ -95,7 +96,7 @@ export function normalizeExtraction(
     result.flaggedForReview = true;
   }
 
-  return result;
+  return applyExtractionPostProcess(result);
 }
 
 export type ExtractionDocument =

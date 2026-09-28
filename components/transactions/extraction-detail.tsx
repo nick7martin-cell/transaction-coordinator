@@ -17,7 +17,11 @@ import { findAgentIdByName, teamSteadyEmailFor, HUBERT_EMAIL } from "@/lib/agent
 import { resolveIntroEmAgentId } from "@/lib/gmail/intro-em-draft";
 import { normalizeParties } from "@/lib/canonical-contacts";
 import { partiesToWorksheet } from "@/lib/parties-worksheet";
-import { buildInitialParties, resolveTeamSteadySide } from "@/lib/transaction-seed";
+import {
+  buildInitialParties,
+  ensureDefaultTitleParties,
+  resolveTeamSteadySide,
+} from "@/lib/transaction-seed";
 import { getInspectionProgress } from "@/lib/inspection-progress";
 import { resolveStatus } from "@/lib/transaction-lifecycle";
 import { getTransactionStatus } from "@/lib/transaction-status";
@@ -707,14 +711,18 @@ export function ExtractionDetail({
       setPhotoUrl((m?.worksheet?.propertyPhotoUrl as string | undefined) ?? null);
 
       if (m?.parties && Array.isArray(m.parties) && m.parties.length > 0) {
-        const loaded = normalizeParties(m.parties);
+        let loaded = normalizeParties(m.parties);
+        const withTitle = ensureDefaultTitleParties(loaded, data);
+        const titleAdded = withTitle.length > loaded.length;
+        loaded = withTitle;
         console.log(`[contacts] loaded ${loaded.length} saved contacts from Supabase`);
         partiesRef.current = loaded;
         setParties(loaded);
-        if (loaded.some((p, i) => {
+        const normalizedChanged = loaded.some((p, i) => {
           const raw = m.parties![i];
           return p.email !== raw.email || p.phone !== raw.phone;
-        })) {
+        });
+        if (titleAdded || normalizedChanged) {
           void patchMeta({ parties: loaded, worksheet: partiesToWorksheet(loaded) });
         }
       } else {

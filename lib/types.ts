@@ -1,5 +1,6 @@
 import type { CommissionResult } from "@/lib/commission";
 import { teamSteadyEmailFor, HUBERT_EMAIL, findAgentIdByName } from "@/lib/agents";
+import { applyExtractionPostProcess } from "@/lib/extraction-postprocess";
 import {
   sanitizeContactField,
   sanitizeNullableField,
@@ -295,7 +296,7 @@ export function coerceExtractedData(
     return sanitizeStringArray(v);
   }
 
-  return {
+  const base: ExtractedData = {
     propertyAddress:                     str("propertyAddress", "property_address"),
     purchasePrice:                        num("purchasePrice", "purchase_price"),
     closingDate:                          str("closingDate", "closing_date"),
@@ -345,4 +346,5 @@ export function coerceExtractedData(
     flaggedForReview: Boolean(r.flaggedForReview ?? r.flagged_for_review),
     errors: arr("errors"),
   };
+  return applyExtractionPostProcess(base);
 }

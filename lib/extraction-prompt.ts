@@ -88,6 +88,7 @@ RULES:
 - confidence: your overall confidence in the extraction accuracy (0-1)
 - If confidence < 0.85, set flaggedForReview to true
 - List any ambiguities or missing critical data in errors array
+- Do NOT add errors about missing email or phone for Team Steady / RE/MAX Results agents on file (Nick Martin, Lucas Hansen, Luke Chase, Brett Lizotte, etc.) — Handled supplies their @teamsteady.com addresses automatically
 ${SUPPLEMENTAL_CONTACT_RULES}
 
 Return this exact JSON shape:

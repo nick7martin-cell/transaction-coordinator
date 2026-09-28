@@ -242,7 +242,7 @@ function ourSideTitleParty(
   return makeParty({
     role,
     name: "",
-    company: OTHER_SIDE_TITLE_UNKNOWN,
+    company: "",
     email: "",
     phone: "",
   });
@@ -311,12 +311,18 @@ export function buildInitialParties(
 }
 
 /** Ensure default title parties exist on an existing roster (non-destructive). */
-export function ensureDefaultTitleParties(parties: TransactionParty[]): TransactionParty[] {
+export function ensureDefaultTitleParties(
+  parties: TransactionParty[],
+  d?: ExtractedData
+): TransactionParty[] {
   const result = [...parties];
-  // For existing rosters we don't have extraction context; assume buyer side
-  // (the common case) and add Unknown on the seller side if missing.
-  if (!result.some((p) => p.role === "seller_title")) {
-    result.push(otherSideTitleParty("buyer"));
+  const ourSide =
+    (d ? resolveTeamSteadySide(d) : resolveTeamSteadySideFromParties(parties)) ?? "buyer";
+  const otherSide = ourSide === "buyer" ? "seller" : "buyer";
+  const otherTitleRole = otherSide === "buyer" ? "buyer_title" : "seller_title";
+
+  if (!result.some((p) => p.role === otherTitleRole)) {
+    result.push(otherSideTitleParty(ourSide));
   }
   return result;
 }
