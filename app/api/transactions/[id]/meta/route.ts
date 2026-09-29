@@ -1,3 +1,4 @@
+import { isEmbeddedPropertyPhoto, publicPropertyPhotoUrl } from "@/lib/property-photo-storage";
 import { supabase } from "@/lib/supabase";
 import { applyWorksheetDefaults } from "@/lib/worksheet-defaults";
 import type { TransactionMeta } from "@/lib/types";
@@ -27,6 +28,12 @@ function hydrateParties(
 ): TransactionMeta | null {
   if (!row) return row as null;
   const ws = (row.worksheet ?? {}) as Record<string, unknown>;
+  const storedUrl = publicPropertyPhotoUrl(row.property_photo_path as string | undefined);
+  if (storedUrl) {
+    ws.propertyPhotoUrl = storedUrl;
+  } else if (isEmbeddedPropertyPhoto(ws.propertyPhotoUrl)) {
+    ws.propertyPhotoUrl = undefined;
+  }
   const wsParties = ws._parties;
   if (Array.isArray(wsParties)) {
     row.parties = wsParties;

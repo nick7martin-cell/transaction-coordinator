@@ -820,10 +820,17 @@ export function ExtractionDetail({
     setUploadingPhoto(true);
     try {
       const dataUrl = await compressImage(file, 1000, 0.72);
-      setPhotoUrl(dataUrl); // optimistic
-      await patchMeta({ worksheet: { propertyPhotoUrl: dataUrl } });
-      dispatchPropertyPhotoUpdated(transaction.id, dataUrl);
-      console.log("[photo] uploaded custom property photo");
+      setPhotoUrl(dataUrl); // optimistic preview
+      const res = await fetch(`/api/transactions/${transaction.id}/property-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataUrl }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Upload failed");
+      setPhotoUrl(d.url);
+      dispatchPropertyPhotoUpdated(transaction.id, d.url);
+      console.log("[photo] uploaded custom property photo to storage");
     } catch (err) {
       console.error("[photo] upload failed", err);
     } finally {

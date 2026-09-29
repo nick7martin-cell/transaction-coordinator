@@ -33,14 +33,6 @@ export type ExtractionListRow = {
   lifecycle: unknown;
 };
 
-/** Custom photos as data URLs are megabytes each — list uses Street View / gradient instead. */
-export function propertyPhotoUrlForList(url: unknown): string | null {
-  if (typeof url !== "string" || !url.trim()) return null;
-  if (url.startsWith("data:")) return null;
-  if (url.length > 2048) return null;
-  return url;
-}
-
 export function extractionListRowToTransaction(
   row: ExtractionListRow,
   opts: { teamSteadyAgentName?: string | null; propertyPhotoUrl?: string | null }

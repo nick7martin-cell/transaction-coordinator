@@ -1,3 +1,4 @@
+import { publicPropertyPhotoUrl } from "@/lib/property-photo-storage";
 import { supabase } from "@/lib/supabase";
 import {
   agentNameFromMetaCommission,
@@ -13,7 +14,9 @@ export async function GET() {
       .from("extractions")
       .select(EXTRACTION_LIST_SELECT)
       .order("created_at", { ascending: false }),
-    supabase.from("transaction_meta").select("transaction_id, commission"),
+    supabase
+      .from("transaction_meta")
+      .select("transaction_id, commission, property_photo_path"),
   ]);
 
   if (error) {
@@ -24,16 +27,22 @@ export async function GET() {
   }
 
   const agentById = new Map<string, string>();
+  const photoById = new Map<string, string>();
   for (const row of metaRows ?? []) {
+    const tid = row.transaction_id as string;
     const agent = agentNameFromMetaCommission(row.commission);
-    if (agent) agentById.set(row.transaction_id as string, agent);
+    if (agent) agentById.set(tid, agent);
+    const url = publicPropertyPhotoUrl(
+      row.property_photo_path as string | null | undefined
+    );
+    if (url) photoById.set(tid, url);
   }
 
   const transactions: Transaction[] = ((data ?? []) as unknown as ExtractionListRow[]).map(
     (row) =>
       extractionListRowToTransaction(row, {
         teamSteadyAgentName: agentById.get(row.id) ?? null,
-        propertyPhotoUrl: null,
+        propertyPhotoUrl: photoById.get(row.id) ?? null,
       })
   );
 
