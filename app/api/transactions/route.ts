@@ -1,40 +1,41 @@
-import { teamSteadyAgentNameFromCommission, type CommissionResult } from "@/lib/commission";
 import { supabase } from "@/lib/supabase";
-import { normalizeTransactionRow } from "@/lib/transaction-lifecycle";
+import {
+  agentNameFromMetaCommission,
+  EXTRACTION_LIST_SELECT,
+  extractionListRowToTransaction,
+  type ExtractionListRow,
+} from "@/lib/transactions-list";
 import type { Transaction } from "@/lib/types";
 
 export async function GET() {
-  const [{ data, error }, { data: metaRows }] = await Promise.all([
-    supabase.from("extractions").select("*").order("created_at", { ascending: false }),
-    supabase.from("transaction_meta").select("transaction_id, worksheet, commission"),
+  const [{ data, error }, { data: metaRows, error: metaError }] = await Promise.all([
+    supabase
+      .from("extractions")
+      .select(EXTRACTION_LIST_SELECT)
+      .order("created_at", { ascending: false }),
+    supabase.from("transaction_meta").select("transaction_id, commission"),
   ]);
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-
-  const photoById = new Map<string, string>();
-  const agentById = new Map<string, string>();
-  for (const row of metaRows ?? []) {
-    const ws = row.worksheet as Record<string, unknown> | null;
-    const url = ws?.propertyPhotoUrl;
-    if (typeof url === "string" && url) photoById.set(row.transaction_id, url);
-    const agent = teamSteadyAgentNameFromCommission(
-      row.commission as CommissionResult | null
-    );
-    if (agent) agentById.set(row.transaction_id, agent);
+  if (metaError) {
+    return Response.json({ error: metaError.message }, { status: 500 });
   }
 
-  const transactions: Transaction[] = (data ?? []).map((t) =>
-    normalizeTransactionRow({
-      ...(t as Transaction),
-      propertyPhotoUrl: photoById.get(t.id) ?? null,
-      teamSteadyAgentName: agentById.get(t.id) ?? null,
-    } as unknown as Record<string, unknown>)
-  );
+  const agentById = new Map<string, string>();
+  for (const row of metaRows ?? []) {
+    const agent = agentNameFromMetaCommission(row.commission);
+    if (agent) agentById.set(row.transaction_id as string, agent);
+  }
 
-  // Auto-close is handled in UI via closing date; persisting on every list load
-  // caused one sequential Supabase update per past-due deal (multi-second loads).
+  const transactions: Transaction[] = ((data ?? []) as unknown as ExtractionListRow[]).map(
+    (row) =>
+      extractionListRowToTransaction(row, {
+        teamSteadyAgentName: agentById.get(row.id) ?? null,
+        propertyPhotoUrl: null,
+      })
+  );
 
   return Response.json({ transactions });
 }
