@@ -1,6 +1,6 @@
 import { teamSteadyAgentNameFromCommission, type CommissionResult } from "@/lib/commission";
 import { supabase } from "@/lib/supabase";
-import { applyAutoClose, normalizeTransactionRow } from "@/lib/transaction-lifecycle";
+import { normalizeTransactionRow } from "@/lib/transaction-lifecycle";
 import type { Transaction } from "@/lib/types";
 
 export async function GET() {
@@ -25,7 +25,7 @@ export async function GET() {
     if (agent) agentById.set(row.transaction_id, agent);
   }
 
-  let transactions: Transaction[] = (data ?? []).map((t) =>
+  const transactions: Transaction[] = (data ?? []).map((t) =>
     normalizeTransactionRow({
       ...(t as Transaction),
       propertyPhotoUrl: photoById.get(t.id) ?? null,
@@ -33,7 +33,8 @@ export async function GET() {
     } as unknown as Record<string, unknown>)
   );
 
-  transactions = await applyAutoClose(transactions);
+  // Auto-close is handled in UI via closing date; persisting on every list load
+  // caused one sequential Supabase update per past-due deal (multi-second loads).
 
   return Response.json({ transactions });
 }

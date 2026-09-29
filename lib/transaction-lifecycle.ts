@@ -159,15 +159,20 @@ export async function applyAutoClose(
   if (closable.length === 0) return transactions;
 
   const closed = new Set<string>();
-  for (const t of closable) {
-    const result = await persistLifecycleStatus(
-      t.id,
-      t.extracted_data,
-      "closed",
-      false
-    );
-    if (result.ok) closed.add(t.id);
-    else console.error("[auto-close] failed:", t.id, result.error);
+  const results = await Promise.all(
+    closable.map(async (t) => {
+      const result = await persistLifecycleStatus(
+        t.id,
+        t.extracted_data,
+        "closed",
+        false
+      );
+      return { id: t.id, result };
+    })
+  );
+  for (const { id, result } of results) {
+    if (result.ok) closed.add(id);
+    else console.error("[auto-close] failed:", id, result.error);
   }
 
   if (closed.size === 0) return transactions;

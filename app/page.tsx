@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { TransactionCard } from "@/components/transactions/transaction-card";
 import { UploadZone } from "@/components/upload/upload-zone";
-import { isActiveTransaction } from "@/lib/transaction-lifecycle";
+import { isEffectiveActive } from "@/lib/transaction-lifecycle";
 import { usePropertyPhotoSync } from "@/lib/use-property-photo-sync";
 import type { Transaction } from "@/lib/types";
 import { Loader2 } from "lucide-react";
@@ -38,7 +38,7 @@ export default function Home() {
 
   usePropertyPhotoSync(setTransactions);
 
-  const activeTransactions = transactions.filter(isActiveTransaction);
+  const activeTransactions = transactions.filter(isEffectiveActive);
 
   const recent = activeTransactions.slice(0, 8);
 
