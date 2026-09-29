@@ -101,6 +101,18 @@ export function isAutoClosable(transaction: Transaction): boolean {
   return days != null && days < 0;
 }
 
+/** Past closing date but DB not updated yet (e.g. auto-close write failed). */
+export function isEffectiveClosed(transaction: Transaction): boolean {
+  const persisted = resolveStatus(transaction);
+  if (persisted === "closed") return true;
+  if (persisted === "cancelled") return false;
+  return isAutoClosable(transaction);
+}
+
+export function isEffectiveActive(transaction: Transaction): boolean {
+  return resolveStatus(transaction) === "active" && !isAutoClosable(transaction);
+}
+
 async function persistLifecycleStatus(
   id: string,
   existingExtracted: unknown,

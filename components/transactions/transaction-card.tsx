@@ -9,6 +9,7 @@ import {
   formatDate,
 } from "@/lib/format";
 import { propertyImageSrc } from "@/lib/property-image";
+import { resolveStatus } from "@/lib/transaction-lifecycle";
 import { getTransactionStatus } from "@/lib/transaction-status";
 import { coerceExtractedData, type Transaction } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -31,8 +32,15 @@ export function TransactionCard({
   const seed = data.propertyAddress || transaction.id;
   const imageSrc = propertyImageSrc(transaction.propertyPhotoUrl, data.propertyAddress, "600x400");
 
+  const persisted = resolveStatus(transaction);
   const daysLabel =
-    days == null ? "—" : days < 0 ? "Closed" : `${days} day${days === 1 ? "" : "s"}`;
+    persisted === "cancelled"
+      ? "Cancelled"
+      : persisted === "closed" || (days != null && days < 0)
+        ? "Closed"
+        : days == null
+          ? "—"
+          : `${days} day${days === 1 ? "" : "s"}`;
 
   return (
     <Link

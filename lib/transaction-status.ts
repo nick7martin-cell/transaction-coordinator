@@ -1,5 +1,9 @@
 import { daysUntilClosing } from "@/lib/format";
-import { resolveStatus } from "@/lib/transaction-lifecycle";
+import {
+  isEffectiveActive,
+  isEffectiveClosed,
+  resolveStatus,
+} from "@/lib/transaction-lifecycle";
 import type { Transaction } from "@/lib/types";
 
 export type TransactionStatus =
@@ -15,7 +19,7 @@ export function getTransactionStatus(
 ): TransactionStatus {
   const persisted = resolveStatus(transaction);
   if (persisted === "cancelled") return "cancelled";
-  if (persisted === "closed") return "closed";
+  if (persisted === "closed" || isEffectiveClosed(transaction)) return "closed";
   if (transaction.flagged_for_review) return "needs_review";
 
   const days = daysUntilClosing(transaction.extracted_data.closingDate);
@@ -52,11 +56,11 @@ export function matchesFilter(
 
   switch (filter) {
     case "all":
-      return persisted === "active";
+      return isEffectiveActive(transaction);
     case "needs_review":
-      return persisted === "active" && transaction.flagged_for_review;
+      return isEffectiveActive(transaction) && transaction.flagged_for_review;
     case "closed":
-      return persisted === "closed";
+      return isEffectiveClosed(transaction);
     case "cancelled":
       return persisted === "cancelled";
     default:
