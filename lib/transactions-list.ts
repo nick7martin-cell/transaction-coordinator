@@ -1,6 +1,51 @@
 import { teamSteadyAgentNameFromCommission, type CommissionResult } from "@/lib/commission";
+import { publicPropertyPhotoUrl } from "@/lib/property-photo-storage";
+import { supabase } from "@/lib/supabase";
 import { normalizeTransactionRow } from "@/lib/transaction-lifecycle";
 import { coerceExtractedData, type Transaction } from "@/lib/types";
+
+export type TransactionListMetaRow = {
+  transaction_id: string;
+  commission: unknown;
+  property_photo_path?: string | null;
+};
+
+function isMissingPropertyPhotoPathColumn(error: { message?: string } | null): boolean {
+  const msg = error?.message?.toLowerCase() ?? "";
+  return msg.includes("property_photo_path") && msg.includes("does not exist");
+}
+
+/** Meta for list view — works before and after supabase-property-photos.sql. */
+export async function fetchTransactionListMeta(): Promise<{
+  rows: TransactionListMetaRow[];
+  error: string | null;
+}> {
+  const withPath = await supabase
+    .from("transaction_meta")
+    .select("transaction_id, commission, property_photo_path");
+
+  if (!withPath.error) {
+    return { rows: (withPath.data ?? []) as TransactionListMetaRow[], error: null };
+  }
+
+  if (!isMissingPropertyPhotoPathColumn(withPath.error)) {
+    return { rows: [], error: withPath.error.message };
+  }
+
+  const fallback = await supabase
+    .from("transaction_meta")
+    .select("transaction_id, commission");
+
+  if (fallback.error) {
+    return { rows: [], error: fallback.error.message };
+  }
+
+  return { rows: (fallback.data ?? []) as TransactionListMetaRow[], error: null };
+}
+
+export function photoUrlFromListMetaRow(row: TransactionListMetaRow): string | null {
+  return publicPropertyPhotoUrl(row.property_photo_path);
+}
 
 /** PostgREST projection — avoids shipping full extracted_data JSONB on list loads. */
 export const EXTRACTION_LIST_SELECT = `
