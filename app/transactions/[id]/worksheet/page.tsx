@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Loader2, Printer } from "lucide-react";
 import {
@@ -29,6 +29,7 @@ import {
 import { OTHER_SIDE_TITLE_UNKNOWN } from "@/lib/transaction-seed";
 import { findAgentIdByName, teamSteadyEmailFor } from "@/lib/agents";
 import { canonicalContactEmail, normalizeParties } from "@/lib/canonical-contacts";
+import { fitWorksheetInputFont } from "@/lib/worksheet-field-fit";
 
 // ── Inline field (uncontrolled input that saves on blur) ──────────────────────
 
@@ -43,11 +44,33 @@ type FieldProps = {
 
 function F({ k, auto, saved, onSave, style, className = "" }: FieldProps) {
   const defaultValue = saved !== undefined && saved !== "" ? saved : (auto ?? "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const runFit = useCallback(() => {
+    const el = inputRef.current;
+    if (el) fitWorksheetInputFont(el);
+  }, []);
+
+  useLayoutEffect(() => {
+    runFit();
+  }, [defaultValue, runFit]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => runFit());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [runFit]);
+
   return (
     <input
+      ref={inputRef}
       type="text"
       defaultValue={defaultValue}
+      onInput={runFit}
       onBlur={(e) => {
+        runFit();
         if (e.target.value !== defaultValue) onSave(k, e.target.value);
       }}
       style={style}
@@ -1097,8 +1120,13 @@ export default function WorksheetPage() {
           outline: none;
           min-width: 24px;
           line-height: 1.2;
+          white-space: nowrap;
+          overflow: hidden;
         }
-        .ws-field.flex-1 { flex: 1 1 0%; }
+        .ws-field.flex-1 {
+          flex: 1 1 0%;
+          min-width: 0;
+        }
         .ws-field.ws-field-top {
           border-bottom-width: 1.75px;
         }
