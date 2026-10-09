@@ -105,15 +105,34 @@ export function isAutoClosable(transaction: Transaction): boolean {
   return isPastClosingDate(transaction);
 }
 
+/** Auto-closed in DB but closing date was moved to the future — status was never reopened. */
+export function isStaleAutoClosed(transaction: Transaction): boolean {
+  if (resolveStatus(transaction) !== "closed") return false;
+  if (isStatusManual(transaction)) return false;
+  return !isPastClosingDate(transaction);
+}
+
+/** Status for UI, tabs, and filters (may differ from raw DB while stale auto-close). */
+export function resolveDisplayStatus(
+  transaction: Transaction
+): PersistedTransactionStatus {
+  if (isStaleAutoClosed(transaction)) return "active";
+  return resolveStatus(transaction);
+}
+
 /** Closed in DB, or closing date has passed (even if status write failed or status_manual is set). */
 export function isEffectiveClosed(transaction: Transaction): boolean {
   const persisted = resolveStatus(transaction);
-  if (persisted === "closed") return true;
+  if (persisted === "closed") {
+    if (isStaleAutoClosed(transaction)) return false;
+    return true;
+  }
   if (persisted === "cancelled") return false;
   return isPastClosingDate(transaction);
 }
 
 export function isEffectiveActive(transaction: Transaction): boolean {
+  if (isStaleAutoClosed(transaction)) return true;
   return resolveStatus(transaction) === "active" && !isPastClosingDate(transaction);
 }
 

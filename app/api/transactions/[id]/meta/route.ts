@@ -1,7 +1,12 @@
 import { isEmbeddedPropertyPhoto, publicPropertyPhotoUrl } from "@/lib/property-photo-storage";
 import { supabase } from "@/lib/supabase";
-import { applyWorksheetDefaults } from "@/lib/worksheet-defaults";
+import { buildTransactionUpdate } from "@/lib/transaction-db";
+import {
+  applyWorksheetDefaults,
+  worksheetToExtractedConcessions,
+} from "@/lib/worksheet-defaults";
 import type { TransactionMeta } from "@/lib/types";
+import { coerceExtractedData } from "@/lib/types";
 
 export async function GET(
   _req: Request,
@@ -28,7 +33,9 @@ function hydrateParties(
 ): TransactionMeta | null {
   if (!row) return row as null;
   const ws = (row.worksheet ?? {}) as Record<string, unknown>;
-  const storedUrl = publicPropertyPhotoUrl(row.property_photo_path as string | undefined);
+  const storedUrl = publicPropertyPhotoUrl(
+    row.property_photo_path as string | undefined
+  );
   if (storedUrl) {
     ws.propertyPhotoUrl = storedUrl;
   } else if (isEmbeddedPropertyPhoto(ws.propertyPhotoUrl)) {
@@ -107,5 +114,35 @@ export async function PATCH(
     console.error("[meta PATCH] upsert failed:", error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
+
+  const wsPatch = body.worksheet as Record<string, unknown> | undefined;
+  if (
+    wsPatch &&
+    ("concessionsDollars" in wsPatch || "concessionsPct" in wsPatch)
+  ) {
+    const concessions = worksheetToExtractedConcessions(worksheet);
+    const { data: extRow } = await supabase
+      .from("extractions")
+      .select("extracted_data")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (extRow?.extracted_data) {
+      const extractedBase = {
+        ...(extRow.extracted_data as Record<string, unknown>),
+        ...concessions,
+      };
+      await supabase
+        .from("extractions")
+        .update({ extracted_data: extractedBase })
+        .eq("id", id);
+      const extracted = coerceExtractedData(extractedBase);
+      await supabase
+        .from("transactions")
+        .update(buildTransactionUpdate({ extracted }))
+        .eq("id", id);
+    }
+  }
+
   return Response.json({ meta: hydrateParties(data) });
 }

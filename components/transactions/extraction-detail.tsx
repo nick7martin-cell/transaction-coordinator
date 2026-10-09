@@ -11,6 +11,7 @@ import {
   formatDate,
   formatPercent,
   parseCurrencyInput,
+  parsePercentInput,
   daysUntilClosing,
 } from "@/lib/format";
 import { findAgentIdByName, teamSteadyEmailFor, HUBERT_EMAIL } from "@/lib/agents";
@@ -23,7 +24,7 @@ import {
   resolveTeamSteadySide,
 } from "@/lib/transaction-seed";
 import { getInspectionProgress } from "@/lib/inspection-progress";
-import { resolveStatus } from "@/lib/transaction-lifecycle";
+import { resolveDisplayStatus } from "@/lib/transaction-lifecycle";
 import { getTransactionStatus } from "@/lib/transaction-status";
 import {
   coerceExtractedData,
@@ -524,6 +525,159 @@ function EditableCurrencyField({
   );
 }
 
+type SellerClosingCostsMode = "dollars" | "percent" | "none";
+
+function sellerClosingCostsMode(
+  dollars: number | null,
+  pct: number | null
+): SellerClosingCostsMode {
+  if (pct != null && pct > 0) return "percent";
+  if (dollars != null && dollars > 0) return "dollars";
+  return "none";
+}
+
+function formatSellerClosingCostsDisplay(
+  dollars: number | null,
+  pct: number | null
+): string {
+  const mode = sellerClosingCostsMode(dollars, pct);
+  if (mode === "percent") return formatPercent(pct);
+  if (mode === "dollars") return formatCurrency(dollars);
+  return "None";
+}
+
+function EditableSellerClosingCostsRow({
+  dollars,
+  pct,
+  saving,
+  onSave,
+}: {
+  dollars: number | null;
+  pct: number | null;
+  saving?: boolean;
+  onSave: (payload: {
+    mode: SellerClosingCostsMode;
+    value?: number;
+  }) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const initialMode = sellerClosingCostsMode(dollars, pct);
+  const [mode, setMode] = useState<SellerClosingCostsMode>(initialMode);
+  const [local, setLocal] = useState(() => {
+    if (initialMode === "percent") return pct != null ? String(pct) : "";
+    if (initialMode === "dollars") return dollars != null ? String(dollars) : "";
+    return "";
+  });
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) {
+      const m = sellerClosingCostsMode(dollars, pct);
+      setMode(m);
+      if (m === "percent") setLocal(pct != null ? String(pct) : "");
+      else if (m === "dollars") setLocal(dollars != null ? String(dollars) : "");
+      else setLocal("");
+    }
+  }, [dollars, pct, editing]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing, mode]);
+
+  function commit() {
+    setEditing(false);
+    if (mode === "none") {
+      if (initialMode !== "none") onSave({ mode: "none" });
+      return;
+    }
+    const parsed =
+      mode === "dollars" ? parseCurrencyInput(local) : parsePercentInput(local);
+    if (parsed == null) {
+      setMode(initialMode);
+      if (initialMode === "percent") setLocal(pct != null ? String(pct) : "");
+      else if (initialMode === "dollars") setLocal(dollars != null ? String(dollars) : "");
+      else setLocal("");
+      return;
+    }
+    const unchanged =
+      mode === "dollars"
+        ? parsed === dollars && initialMode === "dollars"
+        : parsed === pct && initialMode === "percent";
+    if (!unchanged) onSave({ mode, value: parsed });
+  }
+
+  const display = formatSellerClosingCostsDisplay(dollars, pct);
+
+  if (editing) {
+    return (
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2.5 border-b border-line/60 last:border-0">
+        <span className="text-sm text-ink-soft shrink-0">Seller paid closing costs</span>
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <select
+            value={mode}
+            onChange={(e) => {
+              const next = e.target.value as SellerClosingCostsMode;
+              setMode(next);
+              if (next === "none") {
+                setLocal("");
+                setEditing(false);
+                if (initialMode !== "none") onSave({ mode: "none" });
+              }
+            }}
+            className="rounded-lg border border-line bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+          >
+            <option value="none">None</option>
+            <option value="dollars">$ amount</option>
+            <option value="percent">% of price</option>
+          </select>
+          {mode !== "none" && (
+            <input
+              ref={inputRef}
+              type="text"
+              inputMode="decimal"
+              value={local}
+              onChange={(e) => setLocal(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commit();
+                if (e.key === "Escape") {
+                  setEditing(false);
+                  setMode(initialMode);
+                  if (initialMode === "percent") setLocal(pct != null ? String(pct) : "");
+                  else if (initialMode === "dollars") setLocal(dollars != null ? String(dollars) : "");
+                  else setLocal("");
+                }
+              }}
+              placeholder={mode === "dollars" ? "10000" : "3"}
+              className="w-28 rounded-lg border border-line bg-surface px-2.5 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+            />
+          )}
+          {mode === "percent" && (
+            <span className="text-sm text-ink-mute">%</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-between items-center gap-4 py-2.5 border-b border-line/60 last:border-0">
+      <span className="text-sm text-ink-soft">Seller paid closing costs</span>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        disabled={saving}
+        title="Click to edit seller paid closing costs"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-ink text-right rounded-md px-1 -mr-1 hover:bg-line/50 transition-colors disabled:opacity-50"
+      >
+        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-ink-mute" /> : null}
+        <span className={display === "None" ? "text-ink-mute" : undefined}>{display}</span>
+        <Pencil className="h-3.5 w-3.5 shrink-0 text-ink-mute" />
+      </button>
+    </div>
+  );
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function ExtractionDetail({
@@ -609,6 +763,7 @@ export function ExtractionDetail({
   const [savingAcceptanceDate, setSavingAcceptanceDate] = useState(false);
   const [savingClosingDate, setSavingClosingDate] = useState(false);
   const [savingPurchasePrice, setSavingPurchasePrice] = useState(false);
+  const [savingSellerClosingCosts, setSavingSellerClosingCosts] = useState(false);
   const paInputRef = useRef<HTMLInputElement>(null);
   const supplementalInputRef = useRef<HTMLInputElement>(null);
   const seededRef = useRef(false);
@@ -1065,7 +1220,27 @@ export function ExtractionDetail({
     }
   }
 
-  const persistedStatus = resolveStatus(transaction);
+  async function saveSellerClosingCosts(payload: {
+    mode: SellerClosingCostsMode;
+    value?: number;
+  }) {
+    setSavingSellerClosingCosts(true);
+    try {
+      const res = await fetch(`/api/transactions/${transaction.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sellerPaidClosingCosts: payload }),
+      });
+      const d = await res.json();
+      if (res.ok && d.transaction) {
+        onTransactionChange?.(d.transaction);
+      }
+    } finally {
+      setSavingSellerClosingCosts(false);
+    }
+  }
+
+  const persistedStatus = resolveDisplayStatus(transaction);
   const daysValue =
     persistedStatus === "cancelled"
       ? "Cancelled"
@@ -1287,6 +1462,12 @@ export function ExtractionDetail({
                 ? `${data.financingType.toUpperCase()} · ${formatPercent(data.financingPercentage)}`
                 : null
             }
+          />
+          <EditableSellerClosingCostsRow
+            dollars={data.sellerPaidBuyerConcessions}
+            pct={data.sellerPaidBuyerConcessionsPct}
+            saving={savingSellerClosingCosts}
+            onSave={saveSellerClosingCosts}
           />
           <EditableDateRow
             label="Acceptance date"

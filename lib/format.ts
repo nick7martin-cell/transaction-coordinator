@@ -52,6 +52,15 @@ export function formatPercent(value: number | null | undefined): string {
   return `${value}%`;
 }
 
+/** Parse user-entered percentage (e.g. "3" or "2.7%") into a positive number ≤ 100. */
+export function parsePercentInput(value: string): number | null {
+  const cleaned = value.replace(/[%\s]/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0 || n > 100) return null;
+  return n;
+}
+
 export function formatNames(names: string[] | null | undefined): string {
   if (!names?.length) return "—";
   return names.join(", ");

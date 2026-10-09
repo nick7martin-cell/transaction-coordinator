@@ -1,10 +1,17 @@
 import { supabase } from "@/lib/supabase";
 import { buildTransactionUpdate } from "@/lib/transaction-db";
+import { daysUntilClosing } from "@/lib/format";
+import {
+  applyWorksheetDefaults,
+  worksheetConcessionsOverwrite,
+} from "@/lib/worksheet-defaults";
 import {
   applyAutoCloseForId,
   isMissingStatusColumnError,
   isPersistedStatus,
+  isStatusManual,
   normalizeTransactionRow,
+  resolveStatus,
   stripStatusColumnsFromUpdates,
   withLifecycleInExtracted,
 } from "@/lib/transaction-lifecycle";
@@ -22,6 +29,70 @@ function parsePurchasePrice(value: unknown): number | null {
     if (Number.isFinite(n) && n > 0) return n;
   }
   return null;
+}
+
+function parseSellerPaidClosingCosts(
+  raw: unknown
+):
+  | { ok: true; dollars: number | null; pct: number | null }
+  | { ok: false; error: string } {
+  if (raw == null || typeof raw !== "object") {
+    return { ok: false, error: "Invalid seller paid closing costs" };
+  }
+  const mode = (raw as { mode?: unknown }).mode;
+  if (mode !== "dollars" && mode !== "percent" && mode !== "none") {
+    return { ok: false, error: "Invalid seller paid closing costs mode" };
+  }
+  if (mode === "none") {
+    return { ok: true, dollars: null, pct: null };
+  }
+  const value = (raw as { value?: unknown }).value;
+  if (mode === "dollars") {
+    const dollars = parsePurchasePrice(value);
+    if (dollars == null) {
+      return { ok: false, error: "Invalid dollar amount for seller paid closing costs" };
+    }
+    return { ok: true, dollars, pct: null };
+  }
+  const n =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value.replace(/[%\s]/g, ""))
+        : NaN;
+  if (!Number.isFinite(n) || n <= 0 || n > 100) {
+    return { ok: false, error: "Invalid percentage for seller paid closing costs" };
+  }
+  return { ok: true, dollars: null, pct: n };
+}
+
+async function syncWorksheetConcessionsFromExtracted(
+  transactionId: string,
+  extracted: ReturnType<typeof coerceExtractedData>
+): Promise<void> {
+  const { data: metaRow } = await supabase
+    .from("transaction_meta")
+    .select("worksheet, commission")
+    .eq("transaction_id", transactionId)
+    .maybeSingle();
+
+  const worksheet = applyWorksheetDefaults(
+    metaRow?.worksheet as Record<string, unknown> | null | undefined,
+    {
+      ...((metaRow?.worksheet ?? {}) as Record<string, unknown>),
+      ...worksheetConcessionsOverwrite(extracted),
+    }
+  );
+
+  await supabase.from("transaction_meta").upsert(
+    {
+      transaction_id: transactionId,
+      commission: metaRow?.commission ?? {},
+      worksheet,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "transaction_id" }
+  );
 }
 
 export async function GET(
@@ -65,8 +136,16 @@ export async function PATCH(
   const hasClosing = "closingDate" in body;
   const hasPurchasePrice = "purchasePrice" in body;
   const hasStatus = "status" in body;
+  const hasSellerClosingCosts = "sellerPaidClosingCosts" in body;
 
-  if (!hasFlagged && !hasAcceptance && !hasClosing && !hasPurchasePrice && !hasStatus) {
+  if (
+    !hasFlagged &&
+    !hasAcceptance &&
+    !hasClosing &&
+    !hasPurchasePrice &&
+    !hasStatus &&
+    !hasSellerClosingCosts
+  ) {
     return Response.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
@@ -102,6 +181,24 @@ export async function PATCH(
     const closingDate =
       typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
     extractedBase = { ...extractedBase, closingDate };
+
+    if (closingDate) {
+      const preview = normalizeTransactionRow({
+        ...existing,
+        extracted_data: extractedBase,
+      }) as Transaction;
+      const days = daysUntilClosing(closingDate);
+      if (
+        days != null &&
+        days >= 0 &&
+        resolveStatus(preview) === "closed" &&
+        !isStatusManual(preview)
+      ) {
+        updates.status = "active";
+        updates.status_manual = false;
+        extractedBase = withLifecycleInExtracted(extractedBase, "active", false);
+      }
+    }
   }
 
   if (hasPurchasePrice) {
@@ -110,6 +207,18 @@ export async function PATCH(
       return Response.json({ error: "Invalid purchase price" }, { status: 400 });
     }
     extractedBase = { ...extractedBase, purchasePrice };
+  }
+
+  if (hasSellerClosingCosts) {
+    const parsed = parseSellerPaidClosingCosts(body.sellerPaidClosingCosts);
+    if (!parsed.ok) {
+      return Response.json({ error: parsed.error }, { status: 400 });
+    }
+    extractedBase = {
+      ...extractedBase,
+      sellerPaidBuyerConcessions: parsed.dollars,
+      sellerPaidBuyerConcessionsPct: parsed.pct,
+    };
   }
 
   if (hasStatus) {
@@ -125,7 +234,13 @@ export async function PATCH(
     );
   }
 
-  if (hasAcceptance || hasClosing || hasPurchasePrice || hasStatus) {
+  if (
+    hasAcceptance ||
+    hasClosing ||
+    hasPurchasePrice ||
+    hasStatus ||
+    hasSellerClosingCosts
+  ) {
     updates.extracted_data = extractedBase;
   }
 
@@ -157,6 +272,10 @@ export async function PATCH(
     .from("transactions")
     .update(buildTransactionUpdate({ extracted }))
     .eq("id", id);
+
+  if (hasSellerClosingCosts) {
+    await syncWorksheetConcessionsFromExtracted(id, extracted);
+  }
 
   return Response.json({ transaction: normalizeTransactionRow(data) });
 }

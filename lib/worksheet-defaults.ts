@@ -164,3 +164,82 @@ export function mergeConcessionsIntoWorksheet(
 
   return ws;
 }
+
+/** Overwrite CW line 159 fields from extracted data (Handled financials edit). */
+export function worksheetConcessionsOverwrite(
+  extracted: Pick<
+    ExtractedData,
+    "sellerPaidBuyerConcessions" | "sellerPaidBuyerConcessionsPct"
+  >
+): Record<string, string> {
+  const hasPct =
+    extracted.sellerPaidBuyerConcessionsPct != null &&
+    extracted.sellerPaidBuyerConcessionsPct > 0;
+  const hasDollars =
+    extracted.sellerPaidBuyerConcessions != null &&
+    extracted.sellerPaidBuyerConcessions > 0;
+
+  if (hasPct) {
+    return {
+      concessionsPct: String(extracted.sellerPaidBuyerConcessionsPct),
+      concessionsDollars: WORKSHEET_FIELD_DEFAULTS.concessionsDollars,
+    };
+  }
+  if (hasDollars) {
+    return {
+      concessionsDollars: formatMoney(extracted.sellerPaidBuyerConcessions!),
+      concessionsPct: "0",
+    };
+  }
+  return {
+    concessionsDollars: WORKSHEET_FIELD_DEFAULTS.concessionsDollars,
+    concessionsPct: "0",
+  };
+}
+
+function parseWorksheetMoney(value: unknown): number | null {
+  if (value == null) return null;
+  const str = String(value).trim();
+  if (!str || str === "0" || str === "0.00") return null;
+  const cleaned = str.replace(/[$,\s]/g, "");
+  if (!cleaned || cleaned === "0") return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function parseWorksheetPct(value: unknown): number | null {
+  if (value == null) return null;
+  const str = String(value).trim();
+  if (!str || str === "0") return null;
+  const n = Number(str.replace(/[%\s]/g, ""));
+  if (!Number.isFinite(n) || n <= 0 || n > 100) return null;
+  return n;
+}
+
+/** Map CW line 159 fields back onto extracted PA concessions. */
+export function worksheetToExtractedConcessions(
+  ws: Record<string, unknown>
+): Pick<
+  ExtractedData,
+  "sellerPaidBuyerConcessions" | "sellerPaidBuyerConcessionsPct"
+> {
+  const pct = parseWorksheetPct(ws.concessionsPct);
+  if (pct != null) {
+    return {
+      sellerPaidBuyerConcessions: null,
+      sellerPaidBuyerConcessionsPct: pct,
+    };
+  }
+  const dollars = parseWorksheetMoney(ws.concessionsDollars);
+  if (dollars != null) {
+    return {
+      sellerPaidBuyerConcessions: dollars,
+      sellerPaidBuyerConcessionsPct: null,
+    };
+  }
+  return {
+    sellerPaidBuyerConcessions: null,
+    sellerPaidBuyerConcessionsPct: null,
+  };
+}

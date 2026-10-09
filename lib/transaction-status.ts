@@ -2,6 +2,7 @@ import { daysUntilClosing } from "@/lib/format";
 import {
   isEffectiveActive,
   isEffectiveClosed,
+  isStaleAutoClosed,
   resolveStatus,
 } from "@/lib/transaction-lifecycle";
 import type { Transaction } from "@/lib/types";
@@ -19,7 +20,12 @@ export function getTransactionStatus(
 ): TransactionStatus {
   const persisted = resolveStatus(transaction);
   if (persisted === "cancelled") return "cancelled";
-  if (persisted === "closed" || isEffectiveClosed(transaction)) return "closed";
+  if (
+    !isStaleAutoClosed(transaction) &&
+    (persisted === "closed" || isEffectiveClosed(transaction))
+  ) {
+    return "closed";
+  }
   if (transaction.flagged_for_review) return "needs_review";
 
   const days = daysUntilClosing(transaction.extracted_data.closingDate);
