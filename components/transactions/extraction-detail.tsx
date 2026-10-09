@@ -569,6 +569,7 @@ function EditableSellerClosingCostsRow({
     return "";
   });
   const inputRef = useRef<HTMLInputElement>(null);
+  const editControlsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!editing) {
@@ -581,8 +582,14 @@ function EditableSellerClosingCostsRow({
   }, [dollars, pct, editing]);
 
   useEffect(() => {
-    if (editing) inputRef.current?.focus();
+    if (editing && mode !== "none") inputRef.current?.focus();
   }, [editing, mode]);
+
+  function handleEditFocusOut(e: React.FocusEvent<HTMLDivElement>) {
+    const next = e.relatedTarget as Node | null;
+    if (editControlsRef.current?.contains(next)) return;
+    commit();
+  }
 
   function commit() {
     setEditing(false);
@@ -612,9 +619,14 @@ function EditableSellerClosingCostsRow({
     return (
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2.5 border-b border-line/60 last:border-0">
         <span className="text-sm text-ink-soft shrink-0">Seller paid closing costs</span>
-        <div className="flex flex-wrap items-center gap-2 justify-end">
+        <div
+          ref={editControlsRef}
+          className="flex flex-wrap items-center gap-2 justify-end"
+          onFocusOut={handleEditFocusOut}
+        >
           <select
             value={mode}
+            onMouseDown={(e) => e.preventDefault()}
             onChange={(e) => {
               const next = e.target.value as SellerClosingCostsMode;
               setMode(next);
@@ -637,7 +649,6 @@ function EditableSellerClosingCostsRow({
               inputMode="decimal"
               value={local}
               onChange={(e) => setLocal(e.target.value)}
-              onBlur={commit}
               onKeyDown={(e) => {
                 if (e.key === "Enter") commit();
                 if (e.key === "Escape") {
