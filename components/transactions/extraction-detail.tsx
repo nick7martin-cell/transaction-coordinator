@@ -569,7 +569,6 @@ function EditableSellerClosingCostsRow({
     return "";
   });
   const inputRef = useRef<HTMLInputElement>(null);
-  const editControlsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!editing) {
@@ -582,46 +581,49 @@ function EditableSellerClosingCostsRow({
   }, [dollars, pct, editing]);
 
   useEffect(() => {
-    if (editing && mode !== "none") inputRef.current?.focus();
+    if (editing && mode !== "none") {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
   }, [editing, mode]);
 
-  useEffect(() => {
-    if (!editing) return;
-    const el = editControlsRef.current;
-    if (!el) return;
-
-    function onFocusOut(e: FocusEvent) {
-      const next = e.relatedTarget as Node | null;
-      if (el?.contains(next)) return;
-      commit();
-    }
-
-    el.addEventListener("focusout", onFocusOut);
-    return () => el.removeEventListener("focusout", onFocusOut);
-    // commit reads latest mode/local via closure each focusout — intentional
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, mode, local, dollars, pct]);
+  function cancelEdit() {
+    setEditing(false);
+    setMode(initialMode);
+    if (initialMode === "percent") setLocal(pct != null ? String(pct) : "");
+    else if (initialMode === "dollars") setLocal(dollars != null ? String(dollars) : "");
+    else setLocal("");
+  }
 
   function commit() {
-    setEditing(false);
     if (mode === "none") {
+      setEditing(false);
       if (initialMode !== "none") onSave({ mode: "none" });
       return;
     }
     const parsed =
       mode === "dollars" ? parseCurrencyInput(local) : parsePercentInput(local);
-    if (parsed == null) {
-      setMode(initialMode);
-      if (initialMode === "percent") setLocal(pct != null ? String(pct) : "");
-      else if (initialMode === "dollars") setLocal(dollars != null ? String(dollars) : "");
-      else setLocal("");
-      return;
-    }
+    if (parsed == null) return;
     const unchanged =
       mode === "dollars"
         ? parsed === dollars && initialMode === "dollars"
         : parsed === pct && initialMode === "percent";
+    setEditing(false);
     if (!unchanged) onSave({ mode, value: parsed });
+  }
+
+  function pickMode(next: SellerClosingCostsMode) {
+    setMode(next);
+    if (next === "none") {
+      setLocal("");
+      setEditing(false);
+      if (initialMode !== "none") onSave({ mode: "none" });
+      return;
+    }
+    if (next === "dollars") {
+      setLocal(dollars != null && dollars > 0 ? String(dollars) : "");
+    } else {
+      setLocal(pct != null && pct > 0 ? String(pct) : "");
+    }
   }
 
   const display = formatSellerClosingCostsDisplay(dollars, pct);
@@ -630,51 +632,67 @@ function EditableSellerClosingCostsRow({
     return (
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 py-2.5 border-b border-line/60 last:border-0">
         <span className="text-sm text-ink-soft shrink-0">Seller paid closing costs</span>
-        <div
-          ref={editControlsRef}
-          className="flex flex-wrap items-center gap-2 justify-end"
-        >
-          <select
-            value={mode}
-            onMouseDown={(e) => e.preventDefault()}
-            onChange={(e) => {
-              const next = e.target.value as SellerClosingCostsMode;
-              setMode(next);
-              if (next === "none") {
-                setLocal("");
-                setEditing(false);
-                if (initialMode !== "none") onSave({ mode: "none" });
-              }
-            }}
-            className="rounded-lg border border-line bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <div
+            className="inline-flex rounded-lg border border-line bg-canvas p-0.5"
+            role="group"
+            aria-label="Seller paid closing costs type"
           >
-            <option value="none">None</option>
-            <option value="dollars">$ amount</option>
-            <option value="percent">% of price</option>
-          </select>
+            {(
+              [
+                { id: "none" as const, label: "None" },
+                { id: "dollars" as const, label: "$ amount" },
+                { id: "percent" as const, label: "% of price" },
+              ] as const
+            ).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => pickMode(id)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-sm font-medium transition-colors",
+                  mode === id
+                    ? "bg-surface text-ink shadow-sm"
+                    : "text-ink-soft hover:text-ink"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {mode !== "none" && (
-            <input
-              ref={inputRef}
-              type="text"
-              inputMode="decimal"
-              value={local}
-              onChange={(e) => setLocal(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commit();
-                if (e.key === "Escape") {
-                  setEditing(false);
-                  setMode(initialMode);
-                  if (initialMode === "percent") setLocal(pct != null ? String(pct) : "");
-                  else if (initialMode === "dollars") setLocal(dollars != null ? String(dollars) : "");
-                  else setLocal("");
-                }
-              }}
-              placeholder={mode === "dollars" ? "10000" : "3"}
-              className="w-28 rounded-lg border border-line bg-surface px-2.5 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
-            />
-          )}
-          {mode === "percent" && (
-            <span className="text-sm text-ink-mute">%</span>
+            <>
+              <input
+                ref={inputRef}
+                type="text"
+                inputMode="decimal"
+                value={local}
+                onChange={(e) => setLocal(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit();
+                  if (e.key === "Escape") cancelEdit();
+                }}
+                placeholder={mode === "dollars" ? "10000" : "3"}
+                className="w-28 rounded-lg border border-line bg-surface px-2.5 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+              />
+              {mode === "percent" && (
+                <span className="text-sm text-ink-mute">%</span>
+              )}
+              <button
+                type="button"
+                onClick={() => commit()}
+                className="rounded-lg bg-brand px-3 py-1 text-sm font-semibold text-white hover:opacity-90"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="rounded-lg border border-line px-3 py-1 text-sm font-medium text-ink-soft hover:text-ink"
+              >
+                Cancel
+              </button>
+            </>
           )}
         </div>
       </div>
