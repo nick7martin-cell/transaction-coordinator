@@ -585,11 +585,22 @@ function EditableSellerClosingCostsRow({
     if (editing && mode !== "none") inputRef.current?.focus();
   }, [editing, mode]);
 
-  function handleEditFocusOut(e: React.FocusEvent<HTMLDivElement>) {
-    const next = e.relatedTarget as Node | null;
-    if (editControlsRef.current?.contains(next)) return;
-    commit();
-  }
+  useEffect(() => {
+    if (!editing) return;
+    const el = editControlsRef.current;
+    if (!el) return;
+
+    function onFocusOut(e: FocusEvent) {
+      const next = e.relatedTarget as Node | null;
+      if (el?.contains(next)) return;
+      commit();
+    }
+
+    el.addEventListener("focusout", onFocusOut);
+    return () => el.removeEventListener("focusout", onFocusOut);
+    // commit reads latest mode/local via closure each focusout — intentional
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, mode, local, dollars, pct]);
 
   function commit() {
     setEditing(false);
@@ -622,7 +633,6 @@ function EditableSellerClosingCostsRow({
         <div
           ref={editControlsRef}
           className="flex flex-wrap items-center gap-2 justify-end"
-          onFocusOut={handleEditFocusOut}
         >
           <select
             value={mode}
