@@ -11,7 +11,10 @@ import {
   primaryFileName,
 } from "@/lib/upload-files";
 import { mergePartiesFromExtraction } from "@/lib/party-merge";
-import { applyWorksheetDefaults, concessionsWorksheetFields } from "@/lib/worksheet-defaults";
+import {
+  applyWorksheetDefaults,
+  worksheetConcessionsOverwrite,
+} from "@/lib/worksheet-defaults";
 import type { Contact } from "@/lib/types";
 
 export async function POST(req: Request) {
@@ -49,9 +52,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    if (pdfCount > 1) {
+    if (pdfCount > 8) {
       return Response.json(
-        { error: "Please upload only one PDF purchase agreement." },
+        { error: "Please upload at most 8 PDFs (PA, counteroffers, amendments)." },
         { status: 400 }
       );
     }
@@ -112,7 +115,7 @@ export async function POST(req: Request) {
     ).parties;
     const worksheet = applyWorksheetDefaults({}, {
       ...partiesToWorksheet(parties),
-      ...concessionsWorksheetFields(result),
+      ...worksheetConcessionsOverwrite(result),
       _parties: parties,
     });
 

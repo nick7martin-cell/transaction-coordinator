@@ -1,4 +1,5 @@
 import { AGENTS, findAgentIdByName, teamSteadyEmailFor } from "@/lib/agents";
+import { applyCounterofferConcessionOverride } from "@/lib/counteroffer-concessions";
 import type { ExtractedData } from "@/lib/types";
 
 function enrichTeamSteadyAgentContacts(d: ExtractedData): ExtractedData {
@@ -75,5 +76,7 @@ function refreshReviewFlag(d: ExtractedData): ExtractedData {
 
 /** Normalize extraction after Claude or when loading from the database. */
 export function applyExtractionPostProcess(d: ExtractedData): ExtractedData {
-  return refreshReviewFlag(enrichTeamSteadyAgentContacts(d));
+  return refreshReviewFlag(
+    enrichTeamSteadyAgentContacts(applyCounterofferConcessionOverride(d))
+  );
 }

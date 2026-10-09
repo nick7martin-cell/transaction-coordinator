@@ -15,6 +15,10 @@ import {
   stripStatusColumnsFromUpdates,
   withLifecycleInExtracted,
 } from "@/lib/transaction-lifecycle";
+import {
+  rawExtractedWithEffectiveConcessions,
+  repairConcessionsForTransaction,
+} from "@/lib/extraction-concessions-repair";
 import type { Transaction } from "@/lib/types";
 import { coerceExtractedData } from "@/lib/types";
 
@@ -111,6 +115,15 @@ export async function GET(
     return Response.json(
       { error: error.message },
       { status: error.code === "PGRST116" ? 404 : 500 }
+    );
+  }
+
+  const rawExtracted = (data.extracted_data ?? {}) as Record<string, unknown>;
+  const repaired = await repairConcessionsForTransaction(id, rawExtracted);
+  if (repaired) {
+    data.extracted_data = rawExtractedWithEffectiveConcessions(
+      rawExtracted,
+      repaired
     );
   }
 

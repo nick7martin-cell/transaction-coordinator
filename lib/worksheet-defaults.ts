@@ -128,7 +128,7 @@ export function concessionsWorksheetFields(
   return out;
 }
 
-/** Fill blank worksheet concession fields from extraction (re-extract / backfill). */
+/** Keep CW line 159 aligned with extracted (effective) seller-paid closing costs. */
 export function mergeConcessionsIntoWorksheet(
   existingWs: Record<string, unknown>,
   extracted: Pick<
@@ -136,33 +136,10 @@ export function mergeConcessionsIntoWorksheet(
     "sellerPaidBuyerConcessions" | "sellerPaidBuyerConcessionsPct"
   >
 ): Record<string, unknown> {
-  const ws = { ...existingWs };
-  const fromExtraction = concessionsWorksheetFields(extracted);
-
-  for (const [key, value] of Object.entries(fromExtraction)) {
-    const current = ws[key];
-    if (
-      current === undefined ||
-      current === null ||
-      current === "" ||
-      current === "0" ||
-      current === "0.00"
-    ) {
-      ws[key] = value;
-    }
-  }
-
-  if (
-    fromExtraction.concessionsPct &&
-    !fromExtraction.concessionsDollars &&
-    (ws.concessionsDollars === "0.00" ||
-      ws.concessionsDollars === "0" ||
-      ws.concessionsDollars === "")
-  ) {
-    delete ws.concessionsDollars;
-  }
-
-  return ws;
+  return {
+    ...existingWs,
+    ...worksheetConcessionsOverwrite(extracted),
+  };
 }
 
 /** Overwrite CW line 159 fields from extracted data (Handled financials edit). */

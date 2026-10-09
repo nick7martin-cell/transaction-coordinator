@@ -60,9 +60,9 @@ export async function POST(
     }
 
     const pdfCount = countPdfFiles(uploaded);
-    if (pdfCount > 1) {
+    if (pdfCount > 8) {
       return Response.json(
-        { error: "Please upload only one PDF purchase agreement." },
+        { error: "Please upload at most 8 PDFs (PA, counteroffers, amendments)." },
         { status: 400 }
       );
     }

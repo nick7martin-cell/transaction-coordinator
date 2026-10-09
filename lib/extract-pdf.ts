@@ -5,6 +5,7 @@ import {
   partiesForSupplementalPrompt,
   summarizePartiesForPrompt,
 } from "@/lib/extraction-prompt";
+import { normalizeConcessionNumbers } from "@/lib/counteroffer-concessions";
 import { applyExtractionPostProcess } from "@/lib/extraction-postprocess";
 import type { ExtractedData, TransactionParty } from "@/lib/types";
 import { sanitizeNullableField, sanitizeStringArray } from "@/lib/format";
@@ -96,7 +97,8 @@ export function normalizeExtraction(
     result.flaggedForReview = true;
   }
 
-  return applyExtractionPostProcess(result);
+  const concessions = normalizeConcessionNumbers(result);
+  return applyExtractionPostProcess({ ...result, ...concessions });
 }
 
 export type ExtractionDocument =
@@ -145,6 +147,17 @@ function buildMessageContent(
 
   const trimmedNotes = notes?.trim() ?? "";
   const hasSupplementalImages = documents.some((d) => d.kind === "image");
+  const pdfCount = documents.filter((d) => d.kind === "pdf").length;
+
+  if (pdfCount > 1) {
+    blocks.push({
+      type: "text",
+      text:
+        `This upload includes ${pdfCount} PDF documents (purchase agreement, counteroffer(s), amendments, etc.). ` +
+        "Treat them as one executed contract packet. When terms conflict, the most recent counteroffer or amendment CONTROLS. " +
+        "Return FINAL effective contract terms in JSON — never superseded values from an earlier document alone.",
+    });
+  }
 
   if (trimmedNotes) {
     blocks.push({

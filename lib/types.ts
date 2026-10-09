@@ -278,7 +278,7 @@ export { mergePartiesFromExtraction } from "@/lib/party-merge";
 // Handles both camelCase (current) and snake_case (legacy) field names so that
 // records created before field renames still display correctly.
 
-export function coerceExtractedData(
+export function coerceExtractedDataBase(
   raw: Partial<ExtractedData> | Record<string, unknown>
 ): ExtractedData {
   const r = raw as Record<string, unknown>;
@@ -346,5 +346,11 @@ export function coerceExtractedData(
     flaggedForReview: Boolean(r.flaggedForReview ?? r.flagged_for_review),
     errors: arr("errors"),
   };
-  return applyExtractionPostProcess(base);
+  return base;
+}
+
+export function coerceExtractedData(
+  raw: Partial<ExtractedData> | Record<string, unknown>
+): ExtractedData {
+  return applyExtractionPostProcess(coerceExtractedDataBase(raw));
 }

@@ -74,13 +74,20 @@ SUPPLEMENTAL SOURCES — CRITICAL:
 export function buildExtractionPrompt(documentType: string): string {
   return `Extract all contract terms and transaction party contact information from this ${documentType} for a real estate transaction coordinator.
 
+COUNTEROFFERS & AMENDMENTS — CRITICAL:
+- The upload may include multiple PDFs or a single PDF that contains the purchase agreement plus counteroffer(s), amendments, or addenda.
+- Counteroffers and amendments OVERRIDE conflicting terms from the original purchase agreement. Always extract the FINAL effective terms after all executed changes.
+- Apply this to every contract field in JSON (price, dates, earnest money, financing, commissions, seller-paid buyer closing costs / line 159, contingencies, etc.) — not only to contact info.
+- Example: if the PA line 159 shows $3,000 seller-paid buyer closing costs but a later counteroffer sets seller-paid buyer closing costs to $0 or 0%, then sellerPaidBuyerConcessions and sellerPaidBuyerConcessionsPct must both be null in JSON (not $3,000).
+- You may note remaining ambiguities in the errors array, but JSON field values must reflect the controlling counteroffer/amendment when you can determine it.
+
 RULES:
 - Return ONLY valid JSON, no other text, no markdown, no code blocks
 - If a field is missing or unclear, use null (use empty arrays for array fields when none found)
 - financingType must be one of: conventional, FHA, VA, cash — or null if not specified
 - Dates must be YYYY-MM-DD when possible; infer from contract language if only relative dates are given
 - buyerBrokerCommissionPct: look for buyer broker compensation percentage (on MN purchase agreements this is line 406); return as a decimal number like 2.7, not 0.027. When line 406 has a value, the seller pays that buyer broker compensation on the closing worksheet — not the buyer.
-- sellerPaidBuyerConcessions / sellerPaidBuyerConcessionsPct: on Minnesota purchase agreements, line 159 covers seller-paid buyer closing costs (buyer concessions). Extract the dollar amount into sellerPaidBuyerConcessions when a $ amount is filled in; extract the percentage into sellerPaidBuyerConcessionsPct when stated as % of purchase price. Use null for whichever form is not used. If line 159 is blank or N/A, both are null.
+- sellerPaidBuyerConcessions / sellerPaidBuyerConcessionsPct: on Minnesota purchase agreements, line 159 covers seller-paid buyer closing costs (buyer concessions). Use the FINAL value after any counteroffer/amendment. Extract the dollar amount into sellerPaidBuyerConcessions when the effective terms use a $ amount; extract the percentage into sellerPaidBuyerConcessionsPct when stated as % of purchase price. Use null for whichever form is not used. If effectively none / $0 / 0%, both must be null.
 - mlsNumber: look for MLS# or listing number anywhere in the document
 - pidNumber: look for Property ID, PID, Parcel ID, or Tax ID number
 - contingencies: list each distinct contingency (financing, inspection, appraisal, sale of buyer property, etc.)
