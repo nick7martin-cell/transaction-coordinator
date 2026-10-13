@@ -11,4 +11,5 @@ export const EXCLUDED_INCOME_TRANSACTION_IDS = new Set([
 /** Manual import rows (no Handled transaction) to hide from income — e.g. cancelled before Handled. */
 export const EXCLUDED_MANUAL_INCOME_IDENTITIES = new Set([
   incomeIdentityKey("4752 Blanding Ct", "Jeremy - Listing"),
+  incomeIdentityKey("3727 Woodside Dr", "Jeremy - Listing"),
 ]);
