@@ -143,6 +143,7 @@ export type PartyRole =
   | "lender"
   | "buyer_title"
   | "seller_title"
+  | "transaction_coordinator"
   | "other"
   /** Dual agency: agent present but role not yet confirmed by the coordinator. */
   | "agent_unconfirmed";
@@ -164,6 +165,7 @@ export const PARTY_ROLE_LABELS: Record<PartyRole, string> = {
   lender: "Lender",
   buyer_title: "Buyer's Title Company",
   seller_title: "Seller's Title Company",
+  transaction_coordinator: "Transaction Coordinator",
   other: "Other",
   agent_unconfirmed: "Needs Confirmation",
 };
@@ -177,6 +179,7 @@ export const PARTY_ROLE_OPTIONS: { value: PartyRole; label: string }[] = [
   { value: "lender", label: "Lender" },
   { value: "buyer_title", label: "Buyer's Title Company" },
   { value: "seller_title", label: "Seller's Title Company" },
+  { value: "transaction_coordinator", label: "Transaction Coordinator" },
   { value: "other", label: "Other" },
 ];
 

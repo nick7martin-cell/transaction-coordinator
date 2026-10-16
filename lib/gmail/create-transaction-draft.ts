@@ -78,6 +78,10 @@ export async function createTransactionGmailDraft(
   const teamSteadySide  = resolveTeamSteadySide(parties);
   const buyerAgentParty = parties.find((p) => p.role === "buyer_agent");
   const buyerTitleParty = parties.find((p) => p.role === "buyer_title");
+  const transactionCoordinatorEmails = parties
+    .filter((p) => p.role === "transaction_coordinator")
+    .map((p) => p.email?.trim())
+    .filter((e): e is string => Boolean(e));
 
   const draft = buildOpeningEmailDraft({
     propertyAddress: (txn.property_address as string | null) ?? null,
@@ -96,6 +100,7 @@ export async function createTransactionGmailDraft(
     teamSteadySide,
     buyerAgentName:    buyerAgentParty?.name ?? null,
     buyerTitleCo:      buyerTitleParty?.company ?? null,
+    transactionCoordinatorEmails,
   });
 
   // Fetch the user's default Gmail signature. Falls back to no signature so

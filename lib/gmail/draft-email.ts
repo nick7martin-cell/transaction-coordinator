@@ -20,6 +20,8 @@ export type OpeningEmailDraftInput = {
   buyerTitleCo?: string | null;
   /** Name of the buyer's agent — used as first-name addressee in the forward-to-title prompt when Team Steady represents the seller. */
   buyerAgentName?: string | null;
+  /** Other-side or agent TC contacts — CC on the connection email when present. */
+  transactionCoordinatorEmails?: string[] | null;
 };
 
 export type OpeningEmailDraft = {
@@ -86,6 +88,7 @@ export function buildOpeningEmailDraft(
     nonEmptyEmail(input.listingEmail),
     ALWAYS_CC,
     ...adminCcForAgent(input.teamSteadyAgentId),
+    ...(input.transactionCoordinatorEmails ?? []).map((e) => nonEmptyEmail(e)),
   ]);
 
   // ── Determine whether the forward-to-title prompt is needed ────────────────

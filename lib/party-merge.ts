@@ -394,6 +394,8 @@ function rolePriority(role: TransactionParty["role"]): number {
       return 70;
     case "lender":
       return 60;
+    case "transaction_coordinator":
+      return 55;
     case "buyer":
     case "seller":
       return 20;
