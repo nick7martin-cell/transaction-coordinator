@@ -12,6 +12,32 @@ function hasConcessionsPct(
   return false;
 }
 
+function hasConcessionsDollars(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): boolean {
+  for (const source of sources) {
+    const raw = source?.concessionsDollars;
+    if (raw == null) continue;
+    const str = String(raw).trim();
+    if (!str || str === "0" || str === "0.00") continue;
+    return true;
+  }
+  return false;
+}
+
+/** Line 159: only one of $ or % should appear on the CW when the PA states one form. */
+export function normalizeConcessionsWorksheetFields(
+  ws: Record<string, unknown>
+): Record<string, unknown> {
+  const out = { ...ws };
+  if (hasConcessionsPct(out)) {
+    out.concessionsDollars = "";
+  } else if (hasConcessionsDollars(out)) {
+    out.concessionsPct = "";
+  }
+  return out;
+}
+
 /** Default values seeded into worksheet JSONB when a transaction is first saved. */
 export const WORKSHEET_FIELD_DEFAULTS: Record<string, string> = {
   propertyType: "Single Family",
@@ -102,7 +128,7 @@ export function applyWorksheetDefaults(
       result[k] = v;
     }
   }
-  return result;
+  return normalizeConcessionsWorksheetFields(result);
 }
 
 /** Map extracted PA concessions (line 159) onto closing worksheet keys. */
@@ -159,18 +185,18 @@ export function worksheetConcessionsOverwrite(
   if (hasPct) {
     return {
       concessionsPct: String(extracted.sellerPaidBuyerConcessionsPct),
-      concessionsDollars: WORKSHEET_FIELD_DEFAULTS.concessionsDollars,
+      concessionsDollars: "",
     };
   }
   if (hasDollars) {
     return {
       concessionsDollars: formatMoney(extracted.sellerPaidBuyerConcessions!),
-      concessionsPct: "0",
+      concessionsPct: "",
     };
   }
   return {
     concessionsDollars: WORKSHEET_FIELD_DEFAULTS.concessionsDollars,
-    concessionsPct: "0",
+    concessionsPct: "",
   };
 }
 

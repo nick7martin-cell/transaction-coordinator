@@ -292,25 +292,27 @@ export default function WorksheetPage() {
   const salePriceStr = data.purchasePrice ? `$${formatMoney(data.purchasePrice)}` : "";
   const earnestStr   = data.earnestMoney  ? `$${formatMoney(data.earnestMoney)}`  : "";
   const concessionsFromExtraction = concessionsWorksheetFields(data);
-  const hasPctConcession = Boolean(
-    (ws.concessionsPct && ws.concessionsPct !== "0") ||
-      concessionsFromExtraction.concessionsPct
-  );
-  const concessionsDollarsAuto = hasPctConcession
-    ? concessionsFromExtraction.concessionsDollars
-    : (concessionsFromExtraction.concessionsDollars ??
-      WORKSHEET_FIELD_DEFAULTS.concessionsDollars);
-  const concessionsDollarsSaved =
+  const wsPct =
+    ws.concessionsPct && ws.concessionsPct !== "0" ? ws.concessionsPct : undefined;
+  const wsDollars =
     ws.concessionsDollars &&
     ws.concessionsDollars !== "0.00" &&
     ws.concessionsDollars !== "0"
       ? ws.concessionsDollars
       : undefined;
-  const concessionsPctAuto = concessionsFromExtraction.concessionsPct;
-  const concessionsPctSaved =
-    ws.concessionsPct && ws.concessionsPct !== "0"
-      ? ws.concessionsPct
-      : undefined;
+  const hasPctConcession = Boolean(wsPct || concessionsFromExtraction.concessionsPct);
+  const hasDollarsConcession = Boolean(
+    wsDollars || concessionsFromExtraction.concessionsDollars
+  );
+  const concessionsDollarsAuto = hasPctConcession
+    ? undefined
+    : (concessionsFromExtraction.concessionsDollars ??
+      (!hasDollarsConcession ? WORKSHEET_FIELD_DEFAULTS.concessionsDollars : undefined));
+  const concessionsDollarsSaved = hasPctConcession ? undefined : wsDollars;
+  const concessionsPctAuto = hasDollarsConcession
+    ? undefined
+    : concessionsFromExtraction.concessionsPct;
+  const concessionsPctSaved = wsPct;
 
   // Commission values (#7 — fall back to extraction data for dollar amount)
   const extractedBuyerDollars =
