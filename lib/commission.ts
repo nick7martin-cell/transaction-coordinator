@@ -56,7 +56,11 @@ export interface SideBreakdown {
   teamReferralAmount?: number;
   /** Multiple team referral payouts (when two or more recipients). */
   teamReferrals?: TeamReferralPayout[];
+  /** Side GCI entered as % of sale price or a flat dollar amount (facilitator / flat-fee deals). */
+  gciInputMode?: "percent" | "flat";
 }
+
+export type GciInputMode = NonNullable<SideBreakdown["gciInputMode"]>;
 
 export interface CommissionResult {
   side: "buyer" | "seller" | "dual";
@@ -372,14 +376,24 @@ export function applyReferral(
  *   3. No separate TC-fee line (nickAmount = 0); fee is folded into agentAmount.
  *   4. No mentor.  Remaining team (20% − $50) splits evenly: Sam 33.33%, Taylor 33.33%, Lars remainder.
  */
-export function calcSide(
-  salePriceDollars: number,
+function effectivePctFromFlatGci(
+  totalDollars: number,
+  salePriceDollars: number
+): number {
+  if (salePriceDollars <= 0 || totalDollars <= 0) return 0;
+  return Math.round((totalDollars / salePriceDollars) * 10000) / 100;
+}
+
+function calcSideWithTotalCents(
+  totalCents: number,
   commissionPct: number,
   agentId: string,
-  options?: CalcSideOptions
+  options?: CalcSideOptions,
+  gciInputMode?: GciInputMode
 ): SideBreakdown | null {
   const agent = findAgent(agentId);
   if (!agent) return null;
+  if (totalCents <= 0) return null;
 
   const mentor = getMentor(agent);
   const [agentSplitPct] =
@@ -388,8 +402,9 @@ export function calcSide(
       : splitNumerators(agent.splitTier);
   const splitTierLabel = options?.splitTierLabel ?? agent.splitTier;
 
-  const saleCents = Math.round(salePriceDollars * 100);
-  const totalCents = Math.round(saleCents * commissionPct / 100);
+  function withGciMode(b: SideBreakdown): SideBreakdown {
+    return gciInputMode ? { ...b, gciInputMode } : b;
+  }
 
   // Normal (uncapped) team share
   const normalAgentCents = Math.round(totalCents * agentSplitPct / 100);
@@ -414,8 +429,23 @@ export function calcSide(
     const taylorCents = Math.round(remainingCents / 3);
     const larsCents   = remainingCents - samCents - taylorCents;
 
-    return assemble(agent, undefined, commissionPct, totalCents, nickAgentCents,
-      0, 0, samCents, taylorCents, larsCents, capApplied, normalTeamCents, splitTierLabel);
+    return withGciMode(
+      assemble(
+        agent,
+        undefined,
+        commissionPct,
+        totalCents,
+        nickAgentCents,
+        0,
+        0,
+        samCents,
+        taylorCents,
+        larsCents,
+        capApplied,
+        normalTeamCents,
+        splitTierLabel
+      )
+    );
   }
 
   // ── Standard agent TC-fee logic ───────────────────────────────────────────
@@ -423,8 +453,23 @@ export function calcSide(
 
   // Edge case: team share < $50 (unlikely on real transactions)
   if (teamCents <= nickCents) {
-    return assemble(agent, mentor, commissionPct, totalCents, agentCents,
-      teamCents, 0, 0, 0, 0, capApplied, normalTeamCents, splitTierLabel);
+    return withGciMode(
+      assemble(
+        agent,
+        mentor,
+        commissionPct,
+        totalCents,
+        agentCents,
+        teamCents,
+        0,
+        0,
+        0,
+        0,
+        capApplied,
+        normalTeamCents,
+        splitTierLabel
+      )
+    );
   }
 
   const remainingCents = teamCents - nickCents;
@@ -446,8 +491,58 @@ export function calcSide(
     larsCents   = remainingCents - samCents - taylorCents;
   }
 
-  return assemble(agent, mentor, commissionPct, totalCents, agentCents,
-    nickCents, mentorCents, samCents, taylorCents, larsCents, capApplied, normalTeamCents, splitTierLabel);
+  return withGciMode(
+    assemble(
+      agent,
+      mentor,
+      commissionPct,
+      totalCents,
+      agentCents,
+      nickCents,
+      mentorCents,
+      samCents,
+      taylorCents,
+      larsCents,
+      capApplied,
+      normalTeamCents,
+      splitTierLabel
+    )
+  );
+}
+
+/** Side GCI as a flat dollar amount (facilitator / flat-fee listings). */
+export function calcSideFlat(
+  totalDollars: number,
+  agentId: string,
+  salePriceDollars: number,
+  options?: CalcSideOptions
+): SideBreakdown | null {
+  const totalCents = Math.round(totalDollars * 100);
+  const commissionPct = effectivePctFromFlatGci(totalDollars, salePriceDollars);
+  return calcSideWithTotalCents(
+    totalCents,
+    commissionPct,
+    agentId,
+    options,
+    "flat"
+  );
+}
+
+export function calcSide(
+  salePriceDollars: number,
+  commissionPct: number,
+  agentId: string,
+  options?: CalcSideOptions
+): SideBreakdown | null {
+  const saleCents = Math.round(salePriceDollars * 100);
+  const totalCents = Math.round(saleCents * commissionPct / 100);
+  return calcSideWithTotalCents(
+    totalCents,
+    commissionPct,
+    agentId,
+    options,
+    "percent"
+  );
 }
 
 function assemble(

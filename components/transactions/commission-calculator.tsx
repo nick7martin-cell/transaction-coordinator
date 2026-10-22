@@ -9,7 +9,9 @@ import {
   buildOutsideReferralWorksheetFields,
   buildWorksheetReferralLines,
   calcSide,
+  calcSideFlat,
   calcSideOptionsForAgent,
+  type GciInputMode,
   DEREK_JOPP_AGENT_ID,
   formatMoney,
   OUTSIDE_REFERRAL_OPTIONS,
@@ -31,29 +33,61 @@ import { cn } from "@/lib/utils";
 
 type Side = "buyer" | "seller" | "dual";
 
+function parsePositiveAmount(raw: string): number | null {
+  const n = parseFloat(raw.trim());
+  if (isNaN(n) || n <= 0) return null;
+  return n;
+}
+
 function commissionInputHint(
   side: Side,
   buyerAgentId: string,
+  buyerMode: GciInputMode,
   buyerPct: string,
+  buyerFlat: string,
   sellerAgentId: string,
-  sellerPct: string
+  sellerMode: GciInputMode,
+  sellerPct: string,
+  sellerFlat: string
 ): string | null {
   const needsBuyer = side === "buyer" || side === "dual";
   const needsSeller = side === "seller" || side === "dual";
 
   if (needsBuyer) {
     if (!buyerAgentId) return "Select the Team Steady agent for the buyer side.";
-    if (!buyerPct.trim() || isNaN(parseFloat(buyerPct))) {
+    if (buyerMode === "flat") {
+      if (parsePositiveAmount(buyerFlat) == null) {
+        return "Enter the flat buyer-side GCI amount.";
+      }
+    } else if (!buyerPct.trim() || isNaN(parseFloat(buyerPct))) {
       return "Enter the buyer broker commission %.";
     }
   }
   if (needsSeller) {
     if (!sellerAgentId) return "Select the Team Steady agent for the listing side.";
-    if (!sellerPct.trim() || isNaN(parseFloat(sellerPct))) {
+    if (sellerMode === "flat") {
+      if (parsePositiveAmount(sellerFlat) == null) {
+        return "Enter the flat listing-side GCI amount.";
+      }
+    } else if (!sellerPct.trim() || isNaN(parseFloat(sellerPct))) {
       return "Enter the listing broker commission %.";
     }
   }
   return null;
+}
+
+function sideGciTotalDollars(
+  salePrice: number,
+  mode: GciInputMode,
+  pct: string,
+  flat: string
+): number {
+  if (mode === "flat") {
+    return parsePositiveAmount(flat) ?? 0;
+  }
+  const pctNum = parseFloat(pct);
+  if (isNaN(pctNum) || salePrice <= 0) return 0;
+  return (salePrice * pctNum) / 100;
 }
 
 async function readMetaPatchError(res: Response): Promise<string> {
@@ -156,41 +190,71 @@ function buildCommissionResult(
   side: Side,
   salePrice: number,
   buyerAgentId: string,
+  buyerMode: GciInputMode,
   buyerPct: string,
+  buyerFlat: string,
   sellerAgentId: string,
+  sellerMode: GciInputMode,
   sellerPct: string,
+  sellerFlat: string,
   referral: ReferralConfig | null,
   derekSplitOverride: boolean
 ): CommissionResult {
   const buyerPctNum = parseFloat(buyerPct);
   const sellerPctNum = parseFloat(sellerPct);
+  const buyerFlatNum = parsePositiveAmount(buyerFlat);
+  const sellerFlatNum = parsePositiveAmount(sellerFlat);
   const commission: CommissionResult = {
     side,
     referral,
     derekSplitOverride: derekSplitOverride || undefined,
   };
 
-  if ((side === "buyer" || side === "dual") && buyerAgentId && !isNaN(buyerPctNum)) {
-    commission.buyer = applySideReferral(
-      calcSide(
-        salePrice,
-        buyerPctNum,
-        buyerAgentId,
-        calcSideOptionsForAgent(buyerAgentId, derekSplitOverride)
-      ),
-      referral
-    );
+  if (side === "buyer" || side === "dual") {
+    if (buyerAgentId && buyerMode === "flat" && buyerFlatNum != null) {
+      commission.buyer = applySideReferral(
+        calcSideFlat(
+          buyerFlatNum,
+          buyerAgentId,
+          salePrice,
+          calcSideOptionsForAgent(buyerAgentId, derekSplitOverride)
+        ),
+        referral
+      );
+    } else if (buyerAgentId && buyerMode === "percent" && !isNaN(buyerPctNum)) {
+      commission.buyer = applySideReferral(
+        calcSide(
+          salePrice,
+          buyerPctNum,
+          buyerAgentId,
+          calcSideOptionsForAgent(buyerAgentId, derekSplitOverride)
+        ),
+        referral
+      );
+    }
   }
-  if ((side === "seller" || side === "dual") && sellerAgentId && !isNaN(sellerPctNum)) {
-    commission.seller = applySideReferral(
-      calcSide(
-        salePrice,
-        sellerPctNum,
-        sellerAgentId,
-        calcSideOptionsForAgent(sellerAgentId, derekSplitOverride)
-      ),
-      referral
-    );
+  if (side === "seller" || side === "dual") {
+    if (sellerAgentId && sellerMode === "flat" && sellerFlatNum != null) {
+      commission.seller = applySideReferral(
+        calcSideFlat(
+          sellerFlatNum,
+          sellerAgentId,
+          salePrice,
+          calcSideOptionsForAgent(sellerAgentId, derekSplitOverride)
+        ),
+        referral
+      );
+    } else if (sellerAgentId && sellerMode === "percent" && !isNaN(sellerPctNum)) {
+      commission.seller = applySideReferral(
+        calcSide(
+          salePrice,
+          sellerPctNum,
+          sellerAgentId,
+          calcSideOptionsForAgent(sellerAgentId, derekSplitOverride)
+        ),
+        referral
+      );
+    }
   }
 
   return commission;
@@ -250,7 +314,9 @@ function BreakdownTable({ b, label }: { b: SideBreakdown; label: string }) {
       <div className="bg-brand px-4 py-2.5 flex items-center justify-between">
         <span className="text-xs font-semibold text-white uppercase tracking-wider">{label}</span>
         <span className="text-xs font-semibold text-white">
-          {b.commissionPct}% · ${formatMoney(b.totalCommission)}
+          {b.gciInputMode === "flat"
+            ? `Flat fee · $${formatMoney(b.totalCommission)}`
+            : `${b.commissionPct}% · $${formatMoney(b.totalCommission)}`}
         </span>
       </div>
 
@@ -341,19 +407,64 @@ function teamReferralValidationError(
 function referralCommissionTotal(
   side: Side,
   salePrice: number,
+  buyerMode: GciInputMode,
   buyerPct: string,
-  sellerPct: string
+  buyerFlat: string,
+  sellerMode: GciInputMode,
+  sellerPct: string,
+  sellerFlat: string
 ): number {
-  const buyerPctNum = parseFloat(buyerPct);
-  const sellerPctNum = parseFloat(sellerPct);
   let total = 0;
-  if ((side === "buyer" || side === "dual") && !isNaN(buyerPctNum)) {
-    total = Math.max(total, salePrice * buyerPctNum / 100);
+  if (side === "buyer" || side === "dual") {
+    total = Math.max(
+      total,
+      sideGciTotalDollars(salePrice, buyerMode, buyerPct, buyerFlat)
+    );
   }
-  if ((side === "seller" || side === "dual") && !isNaN(sellerPctNum)) {
-    total = Math.max(total, salePrice * sellerPctNum / 100);
+  if (side === "seller" || side === "dual") {
+    total = Math.max(
+      total,
+      sideGciTotalDollars(salePrice, sellerMode, sellerPct, sellerFlat)
+    );
   }
   return total;
+}
+
+function GciModeToggle({
+  mode,
+  onModeChange,
+}: {
+  mode: GciInputMode;
+  onModeChange: (mode: GciInputMode) => void;
+}) {
+  return (
+    <div className="flex rounded-xl border border-line bg-surface p-0.5 text-xs font-medium">
+      <button
+        type="button"
+        onClick={() => onModeChange("percent")}
+        className={cn(
+          "flex-1 rounded-lg px-2.5 py-1.5 transition-colors",
+          mode === "percent"
+            ? "bg-brand text-white"
+            : "text-ink-soft hover:text-ink"
+        )}
+      >
+        % of price
+      </button>
+      <button
+        type="button"
+        onClick={() => onModeChange("flat")}
+        className={cn(
+          "flex-1 rounded-lg px-2.5 py-1.5 transition-colors",
+          mode === "flat"
+            ? "bg-brand text-white"
+            : "text-ink-soft hover:text-ink"
+        )}
+      >
+        Flat fee
+      </button>
+    </div>
+  );
 }
 
 function ReferralScenarioSection({
@@ -602,6 +713,10 @@ export function CommissionCalculator({
   );
   const [sellerAgentId, setSellerAgentId] = useState<string>("");
   const [sellerPct, setSellerPct] = useState<string>("");
+  const [buyerGciMode, setBuyerGciMode] = useState<GciInputMode>("percent");
+  const [buyerFlatGci, setBuyerFlatGci] = useState<string>("");
+  const [sellerGciMode, setSellerGciMode] = useState<GciInputMode>("percent");
+  const [sellerFlatGci, setSellerFlatGci] = useState<string>("");
 
   const [referralType, setReferralType] = useState<ReferralType | null>(null);
   const [referralPct, setReferralPct] = useState<string>("");
@@ -631,11 +746,27 @@ export function CommissionCalculator({
         setSide(c.side);
         if (c.buyer) {
           setBuyerAgentId(c.buyer.agentId);
-          setBuyerPct(String(c.buyer.commissionPct));
+          if (c.buyer.gciInputMode === "flat") {
+            setBuyerGciMode("flat");
+            setBuyerFlatGci(String(c.buyer.totalCommission));
+            setBuyerPct("");
+          } else {
+            setBuyerGciMode("percent");
+            setBuyerPct(String(c.buyer.commissionPct));
+            setBuyerFlatGci("");
+          }
         }
         if (c.seller) {
           setSellerAgentId(c.seller.agentId);
-          setSellerPct(String(c.seller.commissionPct));
+          if (c.seller.gciInputMode === "flat") {
+            setSellerGciMode("flat");
+            setSellerFlatGci(String(c.seller.totalCommission));
+            setSellerPct("");
+          } else {
+            setSellerGciMode("percent");
+            setSellerPct(String(c.seller.commissionPct));
+            setSellerFlatGci("");
+          }
         }
         if (c.referral) {
           setReferralType(c.referral.type);
@@ -736,7 +867,11 @@ export function CommissionCalculator({
       autofill.side,
       salePrice,
       autofill.agentId,
+      "percent",
       String(autofill.commissionPct),
+      "",
+      "",
+      "percent",
       "",
       "",
       null,
@@ -805,15 +940,18 @@ export function CommissionCalculator({
   }
 
   function recalculateWithOverride(nextOverride: boolean) {
-    if (!salePrice) return;
     const referral = buildReferralConfig();
     const commission = buildCommissionResult(
       side,
       salePrice,
       buyerAgentId,
+      buyerGciMode,
       buyerPct,
+      buyerFlatGci,
       sellerAgentId,
+      sellerGciMode,
       sellerPct,
+      sellerFlatGci,
       referral,
       nextOverride
     );
@@ -851,13 +989,25 @@ export function CommissionCalculator({
   }
 
   function runCalculate() {
-    if (!salePrice) return;
+    const needsBuyer = side === "buyer" || side === "dual";
+    const needsSeller = side === "seller" || side === "dual";
+    const buyerUsesPct = needsBuyer && buyerGciMode === "percent";
+    const sellerUsesPct = needsSeller && sellerGciMode === "percent";
+    if ((buyerUsesPct || sellerUsesPct) && !salePrice) {
+      setSaveError("Purchase price is required for %-based commission.");
+      return;
+    }
+
     const hint = commissionInputHint(
       side,
       buyerAgentId,
+      buyerGciMode,
       buyerPct,
+      buyerFlatGci,
       sellerAgentId,
-      sellerPct
+      sellerGciMode,
+      sellerPct,
+      sellerFlatGci
     );
     if (hint) {
       setSaveError(hint);
@@ -867,7 +1017,16 @@ export function CommissionCalculator({
     if (referralType === "team") {
       const teamErr = teamReferralValidationError(
         teamReferralRows,
-        referralCommissionTotal(side, salePrice, buyerPct, sellerPct)
+        referralCommissionTotal(
+          side,
+          salePrice,
+          buyerGciMode,
+          buyerPct,
+          buyerFlatGci,
+          sellerGciMode,
+          sellerPct,
+          sellerFlatGci
+        )
       );
       if (teamErr) {
         setSaveError(teamErr);
@@ -880,15 +1039,19 @@ export function CommissionCalculator({
       side,
       salePrice,
       buyerAgentId,
+      buyerGciMode,
       buyerPct,
+      buyerFlatGci,
       sellerAgentId,
+      sellerGciMode,
       sellerPct,
+      sellerFlatGci,
       referral,
       derekSplitOverride
     );
 
     if (!commission.buyer && !commission.seller) {
-      setSaveError("Could not calculate commission — check agent and % fields.");
+      setSaveError("Could not calculate commission — check agent and GCI fields.");
       return;
     }
 
@@ -903,6 +1066,9 @@ export function CommissionCalculator({
   const needsSellerForm = side === "seller" || side === "dual";
   const derekSelected =
     buyerAgentId === DEREK_JOPP_AGENT_ID || sellerAgentId === DEREK_JOPP_AGENT_ID;
+  const pctNeedsSalePrice =
+    (needsBuyerForm && buyerGciMode === "percent") ||
+    (needsSellerForm && sellerGciMode === "percent");
 
   function handleAgentChange(sideKind: "buyer" | "seller", agentId: string) {
     const nextBuyer = sideKind === "buyer" ? agentId : buyerAgentId;
@@ -918,15 +1084,19 @@ export function CommissionCalculator({
 
     if (clearingDerek) {
       setDerekSplitOverride(false);
-      if (salePrice && (nextBuyer || nextSeller)) {
+      if (nextBuyer || nextSeller) {
         const referral = buildReferralConfig();
         const commission = buildCommissionResult(
           side,
           salePrice,
           nextBuyer,
+          buyerGciMode,
           buyerPct,
+          buyerFlatGci,
           nextSeller,
+          sellerGciMode,
           sellerPct,
+          sellerFlatGci,
           referral,
           false
         );
@@ -951,9 +1121,10 @@ export function CommissionCalculator({
       </div>
 
       <div className="p-6 space-y-6">
-        {!salePrice && (
+        {!salePrice && pctNeedsSalePrice && (
           <div className="rounded-xl border border-warn bg-warn/45 px-4 py-3 text-sm text-warn-ink">
-            Purchase price not extracted — commission amounts cannot be calculated yet.
+            Purchase price not extracted — required for %-based commission. Use flat fee
+            GCI if this deal has a fixed side amount only.
           </div>
         )}
 
@@ -1005,27 +1176,47 @@ export function CommissionCalculator({
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-medium text-ink-mute block mb-1.5">
-                  Buyer Broker Commission %
-                  {extractedBuyerPct != null && (
-                    <span className="ml-1 text-good-ink">(extracted from PA)</span>
-                  )}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-ink-mute block">
+                  Side GCI (gross commission)
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="10"
-                  value={buyerPct}
-                  onChange={(e) => setBuyerPct(e.target.value)}
-                  placeholder="e.g. 2.70"
-                  className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
-                />
-                {salePrice > 0 && buyerPct && !isNaN(parseFloat(buyerPct)) && (
-                  <p className="text-xs text-ink-mute mt-1">
-                    = ${formatMoney(salePrice * parseFloat(buyerPct) / 100)} total
-                  </p>
+                <GciModeToggle mode={buyerGciMode} onModeChange={setBuyerGciMode} />
+                {buyerGciMode === "percent" ? (
+                  <>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="10"
+                      value={buyerPct}
+                      onChange={(e) => setBuyerPct(e.target.value)}
+                      placeholder="e.g. 2.70"
+                      className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+                    />
+                    {extractedBuyerPct != null && (
+                      <p className="text-xs text-good-ink">PA buyer broker: {extractedBuyerPct}%</p>
+                    )}
+                    {salePrice > 0 && buyerPct && !isNaN(parseFloat(buyerPct)) && (
+                      <p className="text-xs text-ink-mute">
+                        = ${formatMoney(salePrice * parseFloat(buyerPct) / 100)} total
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={buyerFlatGci}
+                      onChange={(e) => setBuyerFlatGci(e.target.value)}
+                      placeholder="e.g. 1500"
+                      className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+                    />
+                    <p className="text-xs text-ink-mute">
+                      Flat side GCI before splits (facilitator / flat-fee deals).
+                    </p>
+                  </>
                 )}
               </div>
             </div>
@@ -1050,24 +1241,44 @@ export function CommissionCalculator({
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-medium text-ink-mute block mb-1.5">
-                  Listing Commission % <span className="text-ink-mute">(enter manually)</span>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-ink-mute block">
+                  Side GCI (gross commission)
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="10"
-                  value={sellerPct}
-                  onChange={(e) => setSellerPct(e.target.value)}
-                  placeholder="e.g. 3.00"
-                  className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
-                />
-                {salePrice > 0 && sellerPct && !isNaN(parseFloat(sellerPct)) && (
-                  <p className="text-xs text-ink-mute mt-1">
-                    = ${formatMoney(salePrice * parseFloat(sellerPct) / 100)} total
-                  </p>
+                <GciModeToggle mode={sellerGciMode} onModeChange={setSellerGciMode} />
+                {sellerGciMode === "percent" ? (
+                  <>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="10"
+                      value={sellerPct}
+                      onChange={(e) => setSellerPct(e.target.value)}
+                      placeholder="e.g. 3.00"
+                      className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+                    />
+                    {salePrice > 0 && sellerPct && !isNaN(parseFloat(sellerPct)) && (
+                      <p className="text-xs text-ink-mute">
+                        = ${formatMoney(salePrice * parseFloat(sellerPct) / 100)} total
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={sellerFlatGci}
+                      onChange={(e) => setSellerFlatGci(e.target.value)}
+                      placeholder="e.g. 1500"
+                      className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/15"
+                    />
+                    <p className="text-xs text-ink-mute">
+                      Flat side GCI before splits (facilitator / flat-fee deals).
+                    </p>
+                  </>
                 )}
               </div>
             </div>
@@ -1110,7 +1321,7 @@ export function CommissionCalculator({
         <button
           type="button"
           onClick={calculate}
-          disabled={saving || !salePrice}
+          disabled={saving || (pctNeedsSalePrice && !salePrice)}
           className="inline-flex items-center rounded-xl bg-brand px-6 h-11 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:opacity-50 disabled:pointer-events-none"
         >
           Calculate &amp; Save
