@@ -5,7 +5,9 @@ import {
   isStaleAutoClosed,
   resolveStatus,
 } from "@/lib/transaction-lifecycle";
+import { extractionNeedsReview } from "@/lib/extraction-postprocess";
 import type { Transaction } from "@/lib/types";
+import { coerceExtractedData } from "@/lib/types";
 
 export type TransactionStatus =
   | "active"
@@ -26,7 +28,9 @@ export function getTransactionStatus(
   ) {
     return "closed";
   }
-  if (transaction.flagged_for_review) return "needs_review";
+  if (extractionNeedsReview(coerceExtractedData(transaction.extracted_data))) {
+    return "needs_review";
+  }
 
   const days = daysUntilClosing(transaction.extracted_data.closingDate);
   if (days != null && days <= 10 && days >= 0) return "closing_soon";
@@ -64,7 +68,10 @@ export function matchesFilter(
     case "all":
       return isEffectiveActive(transaction);
     case "needs_review":
-      return isEffectiveActive(transaction) && transaction.flagged_for_review;
+      return (
+        isEffectiveActive(transaction) &&
+        extractionNeedsReview(coerceExtractedData(transaction.extracted_data))
+      );
     case "closed":
       return isEffectiveClosed(transaction);
     case "cancelled":

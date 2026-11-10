@@ -24,6 +24,7 @@ import {
   resolveTeamSteadySide,
 } from "@/lib/transaction-seed";
 import { getInspectionProgress } from "@/lib/inspection-progress";
+import { extractionNeedsReview } from "@/lib/extraction-postprocess";
 import { resolveDisplayStatus } from "@/lib/transaction-lifecycle";
 import { getTransactionStatus } from "@/lib/transaction-status";
 import {
@@ -1298,7 +1299,7 @@ export function ExtractionDetail({
         : days == null
           ? "Closing date TBD"
           : "days to close";
-  const needsReview = transaction.flagged_for_review;
+  const needsReview = extractionNeedsReview(data);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 

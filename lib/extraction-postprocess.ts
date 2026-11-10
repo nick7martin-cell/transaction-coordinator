@@ -19,9 +19,71 @@ function enrichTeamSteadyAgentContacts(d: ExtractedData): ExtractedData {
   return { ...d, buyerAgentEmail, listingAgentEmail };
 }
 
-/** Drop review noise when Handled already knows Team Steady agent contact info. */
+/** Errors that should not trigger review or show in the extraction notes banner. */
+export function filterReviewNoiseErrors(d: ExtractedData): string[] {
+  return d.errors.filter((err) => !isIgnorableReviewError(err, d));
+}
+
+/** @deprecated Use filterReviewNoiseErrors */
 export function filterTeamSteadyAgentContactErrors(d: ExtractedData): string[] {
-  return d.errors.filter((err) => !isTeamSteadyAgentContactError(err, d));
+  return filterReviewNoiseErrors(d);
+}
+
+function isEarnestDueCalculationNote(lower: string): boolean {
+  return (
+    lower.includes("earnest") &&
+    lower.includes("due") &&
+    (lower.includes("calculated") ||
+      lower.includes("business day") ||
+      lower.includes("final acceptance") ||
+      lower.includes("landing on"))
+  );
+}
+
+function isPartyContactGapError(lower: string, party: "buyer" | "seller"): boolean {
+  if (lower.includes("agent")) return false;
+  if (!lower.includes(party)) return false;
+  if (!(lower.includes("email") || lower.includes("phone"))) return false;
+  return (
+    lower.includes("not found") ||
+    lower.includes("missing") ||
+    (party === "buyer" && lower.includes("no buyer")) ||
+    (party === "seller" && lower.includes("no seller"))
+  );
+}
+
+function isUnknownSellerTitleError(lower: string): boolean {
+  if (!lower.includes("title") || !lower.includes("seller")) return false;
+  return (
+    lower.includes("not identified") ||
+    lower.includes("not found") ||
+    lower.includes("unidentified") ||
+    lower.includes("missing")
+  );
+}
+
+function isIgnorableReviewError(err: string, d: ExtractedData): boolean {
+  const lower = err.toLowerCase().trim();
+  if (isTeamSteadyAgentContactError(err, d)) return true;
+  if (isEarnestDueCalculationNote(lower)) return true;
+  if (isPartyContactGapError(lower, "buyer")) return true;
+  if (isPartyContactGapError(lower, "seller")) return true;
+  if (isUnknownSellerTitleError(lower)) return true;
+  return false;
+}
+
+/** Whether extraction still needs coordinator review after stripping noise. */
+export function extractionNeedsReview(d: ExtractedData): boolean {
+  const errors = filterReviewNoiseErrors(d);
+  const hasCritical =
+    !d.propertyAddress?.trim() ||
+    d.purchasePrice == null ||
+    errors.some((e) => e.toLowerCase().includes("missing critical"));
+
+  if (errors.length === 0 && d.confidence >= 0.85 && !hasCritical) {
+    return false;
+  }
+  return errors.length > 0 || d.confidence < 0.85 || hasCritical;
 }
 
 function isTeamSteadyAgentContactError(err: string, d: ExtractedData): boolean {
@@ -57,18 +119,8 @@ function isTeamSteadyAgentContactError(err: string, d: ExtractedData): boolean {
 }
 
 function refreshReviewFlag(d: ExtractedData): ExtractedData {
-  const errors = filterTeamSteadyAgentContactErrors(d);
-  const hasCritical =
-    !d.propertyAddress?.trim() ||
-    d.purchasePrice == null ||
-    errors.some((e) => e.toLowerCase().includes("missing critical"));
-
-  let flaggedForReview = d.flaggedForReview;
-  if (errors.length === 0 && d.confidence >= 0.85 && !hasCritical) {
-    flaggedForReview = false;
-  } else if (errors.length > 0 || d.confidence < 0.85 || hasCritical) {
-    flaggedForReview = true;
-  }
+  const errors = filterReviewNoiseErrors(d);
+  const flaggedForReview = extractionNeedsReview({ ...d, errors });
 
   if (errors === d.errors && flaggedForReview === d.flaggedForReview) return d;
   return { ...d, errors, flaggedForReview };

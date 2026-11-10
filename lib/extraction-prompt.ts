@@ -96,6 +96,7 @@ RULES:
 - If confidence < 0.85, set flaggedForReview to true
 - List any ambiguities or missing critical data in errors array
 - Do NOT add errors about missing email or phone for Team Steady / RE/MAX Results agents on file (Nick Martin, Lucas Hansen, Luke Chase, Brett Lizotte, etc.) — Handled supplies their @teamsteady.com addresses automatically
+- Do NOT add errors for: (a) how earnestMoneyDueDate was calculated from acceptance date / business days — set earnestMoneyDueDate in JSON and omit the narrative; (b) missing buyer or seller client email/phone when not on the PA; (c) seller-side title company not yet identified when not on the PA — connection workflow fills title later
 ${SUPPLEMENTAL_CONTACT_RULES}
 
 Return this exact JSON shape:
